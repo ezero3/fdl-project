@@ -1,0 +1,45 @@
+default_permissions = "project-edit"
+
+[features]
+hooks = true
+
+[permissions.project-edit.filesystem]
+":minimal" = "read"
+glob_scan_max_depth = 8
+
+[permissions.project-edit.filesystem.":workspace_roots"]
+"." = "write"
+".env" = "deny"
+"**/.env" = "deny"
+secrets = "deny"
+"**/secrets/**" = "deny"
+"**/*credential*" = "deny"
+"**/*.pem" = "deny"
+"**/*.key" = "deny"
+
+[permissions.project-edit.network]
+enabled = false
+
+[[hooks.PreToolUse]]
+matcher = "^Bash$"
+
+[[hooks.PreToolUse.hooks]]
+type = "command"
+command = 'bash "$(git rev-parse --show-toplevel)/.codex/hooks/block_dangerous_commands.sh"'
+timeout = 10
+statusMessage = "Checking Bash command"
+
+[[hooks.PostToolUse]]
+matcher = "^Bash$"
+
+[[hooks.PostToolUse.hooks]]
+type = "command"
+command = 'bash "$(git rev-parse --show-toplevel)/.codex/hooks/log_bash_commands.sh"'
+timeout = 10
+statusMessage = "Logging Bash command"
+
+[shell_environment_policy]
+inherit = "core"
+
+[shell_environment_policy.set]
+CLAUDE_CODE_DISABLE_1M_CONTEXT = "1"
