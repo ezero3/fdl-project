@@ -57,22 +57,7 @@ The project uses the **MIR WM-811K** dataset, a real-world collection of **811,4
 
 The dataset archive is intentionally not committed to Git. Downloaded data, generated artifacts, and trained weights should be stored locally in their designated directories and managed according to the repository's version-control policy.
 
-## Repository layout
 
-```text
-.
-|-- data/                 # Local dataset and processed data
-|-- docs/                 # Project documentation and requirements
-|-- explanation/          # Explanatory material and analysis
-|-- notebooks/            # Exploration and experiment notebooks
-|-- presentation/         # Presentation working material
-|-- presentation-slides/  # Final slide sources and exports
-|-- specs/                # Technical and experiment specifications
-|-- tests/                 # Automated tests
-`-- trained-models/        # Saved model artifacts and weights
-```
-
-The implementation, model architecture, and experimental protocol will be documented as the project evolves.
 
 ## References
 
