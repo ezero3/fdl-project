@@ -74,21 +74,3 @@ Pretrained models are allowed, but the solution cannot rely exclusively on them.
 ## Academic integrity
 
 Anti-plagiarism software will be used to scan submitted solutions. The implementation and submitted materials must represent the group's own work, with external material cited appropriately.
-
-## Repository and delivery structure
-
-The repository is organized to keep development artifacts and final deliverables separate:
-
-| Path | Intended content |
-|---|---|
-| `data/` | Local raw and processed dataset files; large data should not be committed |
-| `docs/` | Documentation and project requirements |
-| `notebooks/` | Exploration, preprocessing, and experiment notebooks |
-| `specs/` | Technical specifications and experiment definitions |
-| `tests/` | Automated tests for reusable project code |
-| `trained-models/` | Saved weights and trained models; use external storage if necessary |
-| `presentation/` | Presentation planning and supporting material |
-| `presentation-slides/` | Slide sources and the final PDF export |
-| `explanation/` | Detailed explanations, results, and qualitative analysis |
-
-Before submission, verify that the final PDF slides, Python code, and model artifacts or permitted model link are complete and accessible from the eLearning submission.
