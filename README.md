@@ -57,6 +57,28 @@ The project uses the **MIR WM-811K** dataset, a real-world collection of **811,4
 
 The dataset archive is intentionally not committed to Git. Downloaded data, generated artifacts, and trained weights should be stored locally in their designated directories and managed according to the repository's version-control policy.
 
+## Setup
+
+Install [`uv`](https://docs.astral.sh/uv/getting-started/installation/), then clone the repository and synchronize the locked Python environment:
+
+```bash
+git clone https://github.com/ezero3/fdl-project.git
+cd fdl-project
+uv sync
+```
+
+Download the [MIR WM-811K dataset](http://mirlab.org/dataSet/public/MIR-WM811K.zip), extract the archive, and place the Python dataset file at:
+
+```text
+data/MIR-WM811K/WM811K.pkl
+```
+
+The dataset is not included in the repository because of its size.
+
+`uv sync` installs the Python version declared in `.python-version` when necessary and creates the project environment in `.venv`. In VS Code, run **Python: Select Interpreter** and select `.venv` (on Windows, `.venv\\Scripts\\python.exe`); in a notebook, use **Select Kernel** and choose the same environment.
+
+Run Python commands through the environment with `uv run`, for example `uv run python --version`. Add a runtime dependency with `uv add <package>` or a development-only dependency with `uv add --dev <package>`, and commit both `pyproject.toml` and `uv.lock`.
+
 
 
 ## References
