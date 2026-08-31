@@ -1,0 +1,5 @@
+role,samples
+unlabeled_only_lot_train_eligible,566611
+train_lot_train_eligible,50635
+validation_lot_excluded,14061
+test_lot_excluded,7200

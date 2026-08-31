@@ -1,0 +1,29 @@
+{
+  "random_seed": 86,
+  "target_fractions": {
+    "train": 0.7,
+    "validation": 0.2,
+    "test": 0.1
+  },
+  "group_column": "lotName",
+  "target_column": "failureType",
+  "selected_folds": {
+    "train": [
+      0,
+      2,
+      3,
+      4,
+      5,
+      7,
+      8
+    ],
+    "validation": [
+      1,
+      9
+    ],
+    "test": [
+      6
+    ]
+  },
+  "objective_score": 7.987369712282808e-06
+}

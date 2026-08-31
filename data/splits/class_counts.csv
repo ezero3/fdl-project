@@ -1,0 +1,4 @@
+split,Center,Donut,Edge-Loc,Edge-Ring,Loc,Near-full,Random,Scratch,none
+train,3006,389,3632,6776,2516,104,606,835,103199
+validation,859,111,1038,1936,718,30,173,239,29487
+test,429,55,519,968,359,15,87,119,14745
