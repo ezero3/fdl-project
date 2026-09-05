@@ -1,0 +1,33 @@
+{
+  "class_names": [
+    "Center",
+    "Donut",
+    "Edge-Loc",
+    "Edge-Ring",
+    "Loc",
+    "Near-full",
+    "Random",
+    "Scratch",
+    "none"
+  ],
+  "created_at_utc": "2026-09-05T14:38:59.444797+00:00",
+  "device": "cpu",
+  "metadata": {
+    "representative_seed": 88,
+    "selection_metric": "mean_validation_macro_f1",
+    "strategy": "inverse_sqrt_sampler",
+    "test_set_used": false
+  },
+  "metrics": {
+    "accuracy": 0.9562024804139805,
+    "balanced_accuracy": 0.8199719266772209,
+    "macro_f1": 0.7956444584189334,
+    "mean_loss": 0.14148001343219493,
+    "num_samples": 34591,
+    "weighted_f1": 0.9578753680650458
+  },
+  "model_class": "BaselineCNN",
+  "run_name": "selected_validation",
+  "schema_version": 1,
+  "split_name": "validation"
+}

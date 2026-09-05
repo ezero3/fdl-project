@@ -1,0 +1,125 @@
+{
+  "baseline_model": "BaselineCNN",
+  "class_names": [
+    "Center",
+    "Donut",
+    "Edge-Loc",
+    "Edge-Ring",
+    "Loc",
+    "Near-full",
+    "Random",
+    "Scratch",
+    "none"
+  ],
+  "confirmed_strategies": [
+    "unweighted_ce",
+    "inverse_sqrt_sampler",
+    "inverse_sqrt_ce"
+  ],
+  "created_at_utc": "2026-09-05T14:39:02.402052+00:00",
+  "experiment_config": {
+    "confirmation_seeds": [
+      87,
+      88
+    ],
+    "device": "cpu",
+    "screening_seed": 86,
+    "top_nonbaseline_strategies": 2,
+    "torch_threads": 6,
+    "training": {
+      "batch_size": 512,
+      "early_stopping_patience": 2,
+      "learning_rate": 0.001,
+      "max_epochs": 4,
+      "max_gradient_norm": 5.0,
+      "minimum_epochs": 3,
+      "weight_decay": 0.0001
+    }
+  },
+  "preprocessing_config": {
+    "allow_upscale": true,
+    "encoding": "one_hot",
+    "geometry": "letterbox",
+    "normalization": "none",
+    "target_size": [
+      64,
+      64
+    ]
+  },
+  "representative_seed": 88,
+  "schema_version": 1,
+  "screened_strategies": [
+    "unweighted_ce",
+    "inverse_sqrt_ce",
+    "effective_number_ce",
+    "inverse_sqrt_sampler",
+    "focal_loss"
+  ],
+  "selected_strategy": "inverse_sqrt_sampler",
+  "selection_metric": "mean_validation_macro_f1",
+  "selection_split": "validation",
+  "strategies": {
+    "effective_number_ce": {
+      "effective_number_beta": 0.9999,
+      "focal_gamma": 2.0,
+      "loss": "cross_entropy",
+      "loss_weighting": "effective_number",
+      "name": "effective_number_ce",
+      "sampling": "shuffle",
+      "sampling_weighting": "none"
+    },
+    "focal_loss": {
+      "effective_number_beta": 0.9999,
+      "focal_gamma": 2.0,
+      "loss": "focal",
+      "loss_weighting": "none",
+      "name": "focal_loss",
+      "sampling": "shuffle",
+      "sampling_weighting": "none"
+    },
+    "inverse_sqrt_ce": {
+      "effective_number_beta": 0.9999,
+      "focal_gamma": 2.0,
+      "loss": "cross_entropy",
+      "loss_weighting": "inverse_sqrt",
+      "name": "inverse_sqrt_ce",
+      "sampling": "shuffle",
+      "sampling_weighting": "none"
+    },
+    "inverse_sqrt_sampler": {
+      "effective_number_beta": 0.9999,
+      "focal_gamma": 2.0,
+      "loss": "cross_entropy",
+      "loss_weighting": "none",
+      "name": "inverse_sqrt_sampler",
+      "sampling": "weighted",
+      "sampling_weighting": "inverse_sqrt"
+    },
+    "unweighted_ce": {
+      "effective_number_beta": 0.9999,
+      "focal_gamma": 2.0,
+      "loss": "cross_entropy",
+      "loss_weighting": "none",
+      "name": "unweighted_ce",
+      "sampling": "shuffle",
+      "sampling_weighting": "none"
+    }
+  },
+  "test_set_used": false,
+  "train_class_counts": {
+    "Center": 3006,
+    "Donut": 389,
+    "Edge-Loc": 3632,
+    "Edge-Ring": 6776,
+    "Loc": 2516,
+    "Near-full": 104,
+    "Random": 606,
+    "Scratch": 835,
+    "none": 103199
+  },
+  "train_row_indices_sha256": "2fa04dc5e5eac228ad00809a99b6d8e553f79d4b16c958005965d8b9db6d38be",
+  "train_samples": 121063,
+  "trainable_parameters": 156937,
+  "validation_row_indices_sha256": "7298ed27f1478052b4684a5e68d8985a5da89cadae61a51647fcde8e7eda55c3",
+  "validation_samples": 34591
+}
