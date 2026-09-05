@@ -85,6 +85,12 @@ All PyTorch models must use the canonical nine-class encoding and the same evalu
 
 The pipeline reports accuracy, balanced accuracy, macro-F1, weighted-F1, per-class precision/recall/F1, and absolute and normalized confusion matrices. See [`docs/reports/evaluation_pipeline.md`](docs/reports/evaluation_pipeline.md) for the DataLoader contract, API, generated artifacts, and a runnable example.
 
+## Shared image preprocessing
+
+All models receive categorical wafer maps through the same deterministic PyTorch preprocessing pipeline. The selected default applies aspect-ratio-preserving letterbox resize to `64 x 64` and encodes the three die states as separate one-hot channels. It therefore produces a `float32` tensor with shape `(3, 64, 64)` without treating the state identifiers as continuous intensities.
+
+The choice was made using a class-balanced sample from the training split only; the frozen test split was not inspected. The reusable Dataset returns `(image, target, row_index)`, so it connects directly to the shared evaluation pipeline. See [`docs/reports/preprocessing_report.md`](docs/reports/preprocessing_report.md) for the candidate comparison, rationale, API, and limitations.
+
 
 
 ## References

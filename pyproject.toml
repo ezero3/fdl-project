@@ -15,6 +15,7 @@ dependencies = [
 [dependency-groups]
 dev = [
     "ipykernel>=6.29,<7",
+    "nbconvert>=7.16,<8",
     "pytest>=8.3,<9",
 ]
 
