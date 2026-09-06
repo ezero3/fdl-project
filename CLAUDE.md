@@ -1,0 +1,58 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## Project
+
+University group project (Foundations of Deep Learning, Milano-Bicocca 2025/2026): multiclass classification of failure patterns in the **MIR WM-811K** wafer-map dataset (811,457 maps, ~172,950 labeled, severely imbalanced). Deliverables, deadlines, and presentation rules are in `docs/requirements/project-requirements.md`.
+
+## Environment and commands
+
+`uv` manages the environment (Python pinned in `.python-version`); always run Python through it.
+
+```bash
+uv sync                                   # create/refresh .venv from uv.lock
+uv run pytest                             # all tests (testpaths = tests/, addopts = -ra)
+uv run pytest tests/test_evaluation.py    # one file
+uv run pytest tests/test_evaluation.py::test_name   # one test
+uv run pytest -k "confusion"              # by keyword
+uv run python examples/evaluate_dummy_model.py --overwrite   # end-to-end pipeline smoke test
+uv add <pkg> / uv add --dev <pkg>         # commit both pyproject.toml and uv.lock
+```
+
+The dataset file `data/MIR-WM811K/WM811K.pkl` is gitignored and must be downloaded separately; tests must not depend on it.
+
+## Non-negotiable invariants
+
+These are enforced in code and by specs; violating them silently corrupts cross-model comparability.
+
+**Class encoding** (`src/fdl_project/constants.py`): the nine-class output order is frozen — `Center, Donut, Edge-Loc, Edge-Ring, Loc, Near-full, Random, Scratch, none`. Note the raw-dataset spellings `Near-full` and `none` (lowercase) — these are literal label strings, not display names. Alternative spellings or orderings must raise, never be normalized. Checkpoints carry `class_encoding_metadata()` and are validated with `validate_checkpoint_class_names()`.
+
+**Data splits** (`data/splits/`): a group-aware (by `lotName`) 70/20/10 partition generated once by `notebooks/02_split_data.ipynb` with seed 86. The `.npy` files hold *row indices* into the pickle, not copies of the maps. Never regenerate, re-shuffle, or derive a different split per model — load the persisted indices. Unlabeled maps belonging to validation/test lots are in `unlabeled_excluded_indices.npy` and are ineligible for training. Rationale in `split_strategy.md` / `docs/reports/split_strategy.md`.
+
+**Evaluation protocol** (`src/fdl_project/evaluation.py`): validation drives every selection decision (architecture, hyperparameters, early stopping, loss, sampling, augmentation); the test split stays frozen until the final comparison. Macro-F1 is the primary metric because `none` dominates. Validation/test are evaluated at their natural distribution — no augmentation, resampling, or reordering. Every prediction retains its source dataset row index for error traceability.
+
+**Wafer maps are categorical, not images**: cells are `0` = background/no die, `1` = functional die, `2` = defective die. Transforms (resize, interpolation, normalization) must not blend these into meaningless fractional states. Maps have 632 distinct shapes, so padding/resizing choices matter.
+
+## Architecture
+
+`src/fdl_project/` is an installed package (hatchling, `packages = ["src/fdl_project"]`) whose public API is re-exported from `__init__.py` — import as `from fdl_project import evaluate_model`, never by relative path from a notebook.
+
+The shared-infrastructure layers:
+
+- `constants.py` — the frozen class encoding plus encode/decode/validate helpers. Everything else depends on it.
+- `evaluation.py` — architecture-independent evaluation. `collect_predictions` (model.eval + `torch.inference_mode`, sample-weighted mean loss, CPU collection) → `evaluate_predictions` (metrics, per-class table, absolute and row-normalized confusion matrices, always full nine-class shape even for unpredicted classes) → `evaluate_model` (both) → `save_evaluation_results` (writes `metrics.json`, `per_class_metrics.csv`, `predictions.csv`, `confusion_matrix.png`, `confusion_matrix_normalized.png` under `output/<root>/<run_name>/`, refusing to overwrite without `overwrite=True`).
+
+The **DataLoader contract** is the integration seam between anyone's model and the shared pipeline: each batch is `(inputs, targets, row_indices)` — a 3-tuple/list, or a mapping with keys `inputs`/`images`, `targets`/`labels`, `row_indices`/`indices`. Model output may be a logits `Tensor`, a mapping/object with `.logits`, or a tuple whose first element is logits. Malformed batches, out-of-range labels, and duplicate row indices raise rather than being coerced. Full contract and worked example: `docs/reports/evaluation_pipeline.md`.
+
+## Repository conventions
+
+Each work item flows through four artifacts sharing a numeric prefix: `specs/NN_*.md` (the contract), `docs/tasks/NN_*.md` (checklist), `notebooks/NN_*.ipynb` (executed analysis, committed with outputs), `docs/reports/*.md` (the written result). Generated figures/tables go to `output/`; trained weights to `trained-models/`. Read the matching spec before changing a module — the specs, not the code, are the source of truth for these invariants.
+
+Work happens on `feature/<slug>` branches merged via PR, one per GitHub issue, with Conventional Commit + emoji subjects (see the `commit-message` and `spec` skills). Project skills live in `.agents/skills/` and are symlinked as `.claude/skills`; `wafer-map-data-analyst` carries the domain-analysis conventions for anything touching WM-811K structure or EDA.
+
+A `PreToolUse` hook (`.claude/hooks/block_dangerous_commands.sh`) hard-blocks destructive shell commands — file removal, hard resets, forced cleans, force-pushes to main, piping remote content to a shell. It matches on the command text, so even a heredoc or a script that merely *contains* those strings is rejected; write such content with the Write tool instead of via the shell.
+
+## Current branch state
+
+PRs land as a stack, and part of it has **not reached `main`**: PR #12 (preprocessing) was merged into `feature/evaluation-pipeline` rather than `main`, and open draft PR #13 (class imbalance) targets `feature/image-preprocessing`. So `origin/feature/class-imbalance` carries modules absent from `main` — `datasets.py`, `preprocessing.py`, `preprocessing_analysis.py`, `imbalance.py`, `imbalance_experiment.py`, `models.py`, `training.py`. Check which branch you are on before assuming a module exists, and expect these PRs to need retargeting to `main`.
