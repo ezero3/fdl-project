@@ -29,17 +29,19 @@ Given a wafer map, the project aims to train and evaluate a deep learning model 
 - `Edge-Loc`
 - `Edge-Ring`
 - `Loc`
-- `Near-Full`
+- `Near-full`
 - `Random`
 - `Scratch`
-- `None` (no recognized failure pattern)
+- `none` (no recognized failure pattern)
+
+These are the literal label strings used by the dataset and by the canonical class encoding in [`src/fdl_project/constants.py`](src/fdl_project/constants.py); alternative spellings and orderings are rejected rather than normalized.
 
 This is a multiclass image-classification problem, but it presents several challenges beyond a conventional benchmark:
 
 - wafer maps have varying spatial dimensions and die layouts;
 - only part of the complete collection has expert-assigned labels;
 - the labeled classes are highly imbalanced;
-- the `None` class dominates, while some failure patterns are rare;
+- the `none` class dominates, while some failure patterns are rare;
 - resizing or padding must preserve meaningful spatial structures;
 - accuracy alone can hide weak performance on minority failure classes.
 

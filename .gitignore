@@ -45,3 +45,6 @@ dist/
 .DS_Store
 Thumbs.db
 .python_history
+
+# Local Claude Code audit log
+.claude/audit.jsonl
