@@ -79,6 +79,12 @@ The dataset is not included in the repository because of its size.
 
 Run Python commands through the environment with `uv run`, for example `uv run python --version`. Add a runtime dependency with `uv add <package>` or a development-only dependency with `uv add --dev <package>`, and commit both `pyproject.toml` and `uv.lock`.
 
+## Shared evaluation pipeline
+
+All PyTorch models must use the canonical nine-class encoding and the same evaluation implementation. Validation is used for model selection; the frozen test split is reserved for the final comparison.
+
+The pipeline reports accuracy, balanced accuracy, macro-F1, weighted-F1, per-class precision/recall/F1, and absolute and normalized confusion matrices. See [`docs/reports/evaluation_pipeline.md`](docs/reports/evaluation_pipeline.md) for the DataLoader contract, API, generated artifacts, and a runnable example.
+
 
 
 ## References
