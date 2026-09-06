@@ -18,8 +18,10 @@ from fdl_project.datasets import (
     load_wm811k_dataframe,
 )
 from fdl_project.evaluation import (
+    BootstrapResult,
     CollectedPredictions,
     EvaluationResult,
+    bootstrap_evaluation,
     collect_predictions,
     evaluate_model,
     evaluate_predictions,
@@ -60,6 +62,7 @@ __all__ = [
     "WAFER_STATE_COUNT",
     "WAFER_STATE_NAMES",
     "BaselineCNN",
+    "BootstrapResult",
     "CollectedPredictions",
     "EvaluationResult",
     "FocalLoss",
@@ -67,6 +70,7 @@ __all__ = [
     "PreprocessingConfig",
     "WM811KDataset",
     "WaferMapPreprocessor",
+    "bootstrap_evaluation",
     "build_training_loss",
     "build_weighted_sampler",
     "class_encoding_metadata",
