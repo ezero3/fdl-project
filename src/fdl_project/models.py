@@ -1,0 +1,53 @@
+"""Small controlled model used to compare training interventions."""
+
+from __future__ import annotations
+
+from torch import Tensor, nn
+
+from fdl_project.constants import NUM_CLASSES
+from fdl_project.preprocessing import WAFER_STATE_COUNT
+
+
+class BaselineCNN(nn.Module):
+    """Compact spatial CNN used as a task-05 experimental instrument."""
+
+    def __init__(self, *, dropout: float = 0.2) -> None:
+        super().__init__()
+        if not 0 <= dropout < 1:
+            raise ValueError("dropout must be in [0, 1).")
+        self.features = nn.Sequential(
+            nn.Conv2d(WAFER_STATE_COUNT, 16, kernel_size=5, stride=2, padding=2),
+            nn.BatchNorm2d(16),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(16, 32, kernel_size=3, stride=2, padding=1),
+            nn.BatchNorm2d(32),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(32, 64, kernel_size=3, stride=2, padding=1),
+            nn.BatchNorm2d(64),
+            nn.ReLU(inplace=True),
+            nn.AdaptiveAvgPool2d((4, 4)),
+        )
+        self.classifier = nn.Sequential(
+            nn.Flatten(),
+            nn.Linear(64 * 4 * 4, 128),
+            nn.ReLU(inplace=True),
+            nn.Dropout(dropout),
+            nn.Linear(128, NUM_CLASSES),
+        )
+
+    def forward(self, inputs: Tensor) -> Tensor:
+        if inputs.ndim != 4 or inputs.shape[1] != WAFER_STATE_COUNT:
+            raise ValueError(
+                "BaselineCNN inputs must have shape (batch_size, 3, height, width)."
+            )
+        if not inputs.is_floating_point():
+            raise TypeError("BaselineCNN inputs must be floating-point tensors.")
+        return self.classifier(self.features(inputs))
+
+
+def count_trainable_parameters(model: nn.Module) -> int:
+    """Count trainable scalar parameters for experiment metadata."""
+
+    return sum(
+        parameter.numel() for parameter in model.parameters() if parameter.requires_grad
+    )
