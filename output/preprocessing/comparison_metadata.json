@@ -1,0 +1,61 @@
+{
+  "random_seed": 86,
+  "selection_split": "train",
+  "test_set_used": false,
+  "samples_per_class": 100,
+  "sample_count": 900,
+  "reference_batch_size": 64,
+  "selected_candidate": "letterbox_one_hot_64",
+  "selected_config": {
+    "target_size": [
+      64,
+      64
+    ],
+    "geometry": "letterbox",
+    "encoding": "one_hot",
+    "normalization": "none",
+    "allow_upscale": true
+  },
+  "candidate_configs": {
+    "pad_one_hot_native": {
+      "target_size": [
+        212,
+        187
+      ],
+      "geometry": "pad",
+      "encoding": "one_hot",
+      "normalization": "none",
+      "allow_upscale": true
+    },
+    "resize_one_hot_64": {
+      "target_size": [
+        64,
+        64
+      ],
+      "geometry": "resize",
+      "encoding": "one_hot",
+      "normalization": "none",
+      "allow_upscale": true
+    },
+    "letterbox_one_hot_64": {
+      "target_size": [
+        64,
+        64
+      ],
+      "geometry": "letterbox",
+      "encoding": "one_hot",
+      "normalization": "none",
+      "allow_upscale": true
+    },
+    "letterbox_single_64": {
+      "target_size": [
+        64,
+        64
+      ],
+      "geometry": "letterbox",
+      "encoding": "single_channel",
+      "normalization": "divide_by_two",
+      "allow_upscale": true
+    }
+  }
+}

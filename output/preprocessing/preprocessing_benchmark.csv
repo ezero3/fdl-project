@@ -1,0 +1,5 @@
+candidate,geometry,encoding,normalization,target_height,target_width,channels,milliseconds_per_map,reference_batch_mib,median_abs_defective_ratio_error,p95_abs_defective_ratio_error,median_bbox_log_aspect_error,p95_bbox_log_aspect_error,lost_defect_maps,mean_output_active_fraction
+pad_one_hot_native,pad,one_hot,none,212,187,3,3.8637118888760194,29.0361328125,0.0,0.0,0.0,0.0,0,0.03542539714570791
+resize_one_hot_64,resize,one_hot,none,64,64,3,1.4552392222038988,3.0,0.002287170909808442,0.007846280815934274,0.0769610411361284,0.23010568977473927,0,0.7756401909722223
+letterbox_one_hot_64,letterbox,one_hot,none,64,64,3,1.4758274444223691,3.0,0.0025295590529250678,0.009361995950985608,0.004384598317823905,0.00836824967051658,0,0.7124587673611111
+letterbox_single_64,letterbox,single_channel,divide_by_two,64,64,1,1.1209245555154566,1.0,0.0025295590529250678,0.009361995950985608,0.004384598317823905,0.00836824967051658,0,0.7124587673611111

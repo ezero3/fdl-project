@@ -85,6 +85,18 @@ All PyTorch models must use the canonical nine-class encoding and the same evalu
 
 The pipeline reports accuracy, balanced accuracy, macro-F1, weighted-F1, per-class precision/recall/F1, and absolute and normalized confusion matrices. See [`docs/reports/evaluation_pipeline.md`](docs/reports/evaluation_pipeline.md) for the DataLoader contract, API, generated artifacts, and a runnable example.
 
+## Shared image preprocessing
+
+All models receive categorical wafer maps through the same deterministic PyTorch preprocessing pipeline. The selected default applies aspect-ratio-preserving letterbox resize to `64 x 64` and encodes the three die states as separate one-hot channels. It therefore produces a `float32` tensor with shape `(3, 64, 64)` without treating the state identifiers as continuous intensities.
+
+The choice was made using a class-balanced sample from the training split only; the frozen test split was not inspected. The reusable Dataset returns `(image, target, row_index)`, so it connects directly to the shared evaluation pipeline. See [`docs/reports/preprocessing_report.md`](docs/reports/preprocessing_report.md) for the candidate comparison, rationale, API, and limitations.
+
+## Shared class-imbalance policy
+
+Training uses deterministic inverse-square-root weighted sampling with replacement while preserving the original epoch length. This moderates the approximately 992:1 training imbalance between `none` and `Near-full` without discarding majority observations or forcing perfectly uniform classes. Validation and test always retain their natural distributions and never use the training sampler.
+
+The policy was selected through a full-data controlled PyTorch experiment: five interventions were screened and the two best were confirmed against an unweighted baseline over three seeds. Mean validation macro-F1 improved from `0.7286` to `0.7955`, while mean accuracy changed from `0.9590` to `0.9577`. See [`docs/reports/class_imbalance_report.md`](docs/reports/class_imbalance_report.md) for the protocol, per-class effects, API, and limitations.
+
 
 
 ## References
