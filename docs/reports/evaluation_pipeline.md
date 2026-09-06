@@ -115,6 +115,23 @@ model.load_state_dict(checkpoint["model_state_dict"])
 
 This prevents a checkpoint trained with a different logit order from producing plausible-looking but incorrectly named predictions.
 
+## Confidence intervals
+
+Macro-F1 has no closed-form sampling distribution, and the rare classes have small support in the fixed folds, so a point estimate alone cannot show whether two models are separable. `bootstrap_evaluation` resamples the evaluated rows with replacement and reports percentile intervals.
+
+```python
+from fdl_project import bootstrap_evaluation, evaluate_model, save_evaluation_results
+
+result = evaluate_model(model=model, dataloader=loader, device=device, split_name="test")
+bootstrap = bootstrap_evaluation(result, num_resamples=1000, seed=86)
+save_evaluation_results(result, output_root="output/evaluation", run_name="model-a",
+                        bootstrap=bootstrap)
+```
+
+`bootstrap.aggregate` holds accuracy, balanced accuracy, macro-F1, and weighted-F1 with `ci_lower`, `ci_upper`, and `standard_error`; `bootstrap.per_class` holds the same for per-class F1 alongside its support. Passing `bootstrap` to `save_evaluation_results` additionally writes `bootstrap_aggregate.csv` and `bootstrap_per_class.csv` and records the aggregate intervals under a `bootstrap` key in `metrics.json`. Omitting it leaves every existing artifact byte-identical.
+
+Measured on the 34,591 validation predictions of the selected class-imbalance run, the 95% interval for macro-F1 spans 0.7800 to 0.8091, while per-class F1 for `Near-full` (support 30) spans 0.8302 to 0.9818. The frozen test split holds half as many observations and only 15 `Near-full` wafers, so its intervals are wider still. Two models whose test macro-F1 differ by less than roughly 0.04 should therefore be reported as not separable rather than ranked.
+
 ## Reproducible smoke test
 
 The example below uses a deterministic pass-through PyTorch model, includes all nine classes, and uses a smaller final batch:
