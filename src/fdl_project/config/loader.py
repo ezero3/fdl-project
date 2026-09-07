@@ -9,6 +9,7 @@ misspelled key stops the run instead of silently training the default.
 from __future__ import annotations
 
 import copy
+import logging
 from dataclasses import fields
 from pathlib import Path
 from typing import Any
@@ -33,6 +34,18 @@ from fdl_project.data.imbalance import PRESET_IMBALANCE_CONFIGS, ImbalanceConfig
 from fdl_project.data.preprocessing import PreprocessingConfig
 
 DEFAULTS_FILENAME = "defaults.yaml"
+
+logger = logging.getLogger(__name__)
+
+
+def _find_defaults(path: Path) -> Path | None:
+    """Nearest ``defaults.yaml`` at or above the config's directory."""
+
+    for directory in [path.parent, *path.parent.parents]:
+        candidate = directory / DEFAULTS_FILENAME
+        if candidate.is_file() and candidate != path:
+            return candidate
+    return None
 
 
 def _load_yaml(path: Path) -> dict[str, Any]:
@@ -293,10 +306,22 @@ def load_experiment_config(
     path = Path(config_path)
     experiment_payload = _load_yaml(path)
     if defaults_path is None:
-        candidate = path.parent / DEFAULTS_FILENAME
-        defaults_payload = (
-            {} if candidate == path or not candidate.is_file() else _load_yaml(candidate)
-        )
+        # Walk upward so a config can live in a subdirectory --
+        # configs/train/<series>/arm.yaml still inherits
+        # configs/train/defaults.yaml. Looking only in the immediate parent
+        # meant a nested config silently merged nothing and trained on
+        # dataclass defaults: different batch size, learning rate, epoch
+        # budget and patience, with no error and no warning.
+        candidate = _find_defaults(path)
+        defaults_payload = {} if candidate is None else _load_yaml(candidate)
+        if candidate is None:
+            logger.warning(
+                "No %s found at or above %s; using dataclass defaults. Every "
+                "tuned setting in configs/train/defaults.yaml is absent from "
+                "this run.",
+                DEFAULTS_FILENAME,
+                path.parent,
+            )
     else:
         defaults_payload = _load_yaml(Path(defaults_path))
 

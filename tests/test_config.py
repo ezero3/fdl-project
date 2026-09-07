@@ -328,3 +328,41 @@ def test_focal_loss_and_the_sampler_can_be_combined() -> None:
 
     assert combined.loss == "focal"
     assert combined.sampling == "weighted"
+
+
+def test_a_nested_config_inherits_defaults_from_above(tmp_path) -> None:
+    """A config in configs/train/<series>/ must still get
+    configs/train/defaults.yaml. Looking only in the immediate parent meant a
+    nested config silently merged nothing and trained on dataclass defaults --
+    different batch size, learning rate, epoch budget and patience, with no
+    error and no warning."""
+
+    import yaml
+
+    root = tmp_path / "train"
+    (root / "series").mkdir(parents=True)
+    (root / "defaults.yaml").write_text(
+        yaml.safe_dump({"trainer": {"max_epochs": 50, "batch_size": 256}})
+    )
+    nested = root / "series" / "arm.yaml"
+    nested.write_text(yaml.safe_dump({"name": "arm"}))
+
+    config = load_experiment_config(nested)
+
+    assert config.trainer.max_epochs == 50
+    assert config.trainer.batch_size == 256
+
+
+def test_a_config_with_no_defaults_anywhere_warns(tmp_path, caplog) -> None:
+    """Silence here is how a whole experiment series ran on the wrong
+    settings, so the absence has to be audible."""
+
+    import yaml
+
+    lonely = tmp_path / "arm.yaml"
+    lonely.write_text(yaml.safe_dump({"name": "arm"}))
+
+    with caplog.at_level("WARNING"):
+        load_experiment_config(lonely)
+
+    assert any("defaults.yaml" in record.message for record in caplog.records)
