@@ -8,6 +8,8 @@ forty epochs into a Colab session.
 
 from __future__ import annotations
 
+import os
+
 import re
 from collections.abc import Mapping
 from dataclasses import dataclass, field, replace
@@ -109,7 +111,7 @@ class DataConfig:
 
     dataset_path: Path = Path("data/MIR-WM811K/WM811K.pkl")
     split_directory: Path = Path("data/splits")
-    num_workers: int = 0
+    num_workers: int | str = "auto"
     pin_memory: bool = False
     cache: bool = True
     preprocessing: PreprocessingConfig = PreprocessingConfig()
@@ -119,6 +121,13 @@ class DataConfig:
     def __post_init__(self) -> None:
         object.__setattr__(self, "dataset_path", Path(self.dataset_path))
         object.__setattr__(self, "split_directory", Path(self.split_directory))
+        # "auto" is the sensible default because the right value is a
+        # property of the machine, not of the experiment: these runs are
+        # dataloader-bound, and a Colab T4 has 8 cores while an A100 runtime
+        # has far more. Pinning a number in the config would silently
+        # under-use every machine but the one it was measured on.
+        if self.num_workers == "auto":
+            object.__setattr__(self, "num_workers", os.cpu_count() or 2)
         _require_non_negative_integer(self.num_workers, "data.num_workers")
         if not isinstance(self.pin_memory, bool):
             raise ValueError("data.pin_memory must be a boolean.")

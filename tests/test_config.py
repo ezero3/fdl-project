@@ -261,3 +261,23 @@ def test_registries_report_what_they_contain() -> None:
 def test_an_unknown_model_name_lists_the_available_ones() -> None:
     with pytest.raises(KeyError, match="baseline_cnn"):
         build_model("resnet99")
+
+
+def test_num_workers_auto_follows_the_machine() -> None:
+    """The right worker count is a property of the machine, not the
+    experiment: these runs are dataloader-bound, and a Colab T4 has 8 cores
+    while an A100 runtime has far more."""
+
+    import os
+
+    from fdl_project.config.schema import DataConfig
+
+    assert DataConfig().num_workers == (os.cpu_count() or 2)
+    assert DataConfig(num_workers=4).num_workers == 4
+
+
+def test_num_workers_still_rejects_nonsense() -> None:
+    from fdl_project.config.schema import DataConfig
+
+    with pytest.raises(ValueError, match="num_workers"):
+        DataConfig(num_workers=-1)
