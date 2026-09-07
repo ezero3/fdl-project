@@ -30,6 +30,8 @@ from dataclasses import dataclass
 
 import torch
 from torch import Tensor
+from torchvision.transforms import InterpolationMode
+from torchvision.transforms.v2 import functional as transforms_functional
 
 from fdl_project.constants import CLASS_NAMES, NUM_CLASSES
 
@@ -206,9 +208,9 @@ class RotationAugmentation:
             raise ValueError("augmentation probability must lie in [0, 1].")
 
     def __call__(self, tensor: Tensor, class_index: int | None = None) -> Tensor:
-        from torchvision.transforms import InterpolationMode
-        from torchvision.transforms.v2 import functional as transforms_functional
-
+        # torchvision is imported at module level, not here: this runs inside
+        # forked DataLoader workers, and an import in a forked child trips
+        # W&B's import hook with ForkedError.
         if not _should_augment(self.probability, None, class_index):
             return tensor
         angle = float(torch.empty(()).uniform_(-self.degrees, self.degrees))

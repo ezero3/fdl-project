@@ -480,3 +480,18 @@ def test_rotation_rejects_a_fill_of_the_wrong_width() -> None:
 
     with pytest.raises(ValueError, match="channels"):
         augmentation(_wafer())
+
+
+def test_rotation_imports_nothing_at_call_time() -> None:
+    """This runs inside forked DataLoader workers. An import there trips W&B's
+    import hook with ForkedError and kills the run -- so torchvision must be
+    imported at module scope, not lazily in __call__."""
+
+    import inspect
+
+    from fdl_project.data import augmentation
+
+    source = inspect.getsource(augmentation.RotationAugmentation.__call__)
+
+    assert "import" not in source
+    assert hasattr(augmentation, "InterpolationMode")
