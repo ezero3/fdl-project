@@ -10,10 +10,17 @@ from torch import Tensor
 from torch.nn import functional as F
 
 GeometryStrategy = Literal["pad", "resize", "letterbox"]
-EncodingStrategy = Literal["one_hot", "single_channel"]
-NormalizationStrategy = Literal["none", "divide_by_two"]
+EncodingStrategy = Literal["one_hot", "single_channel", "grayscale_rgb"]
+NormalizationStrategy = Literal["none", "divide_by_two", "imagenet"]
 
 WAFER_STATE_COUNT: Final[int] = 3
+
+#: torchvision's ImageNet statistics, per RGB channel. Only meaningful with
+#: ``encoding="grayscale_rgb"``: the point is to place wafer maps in the
+#: distribution a pretrained backbone was fitted on, and that only makes sense
+#: for an input shaped like a photograph in the first place.
+IMAGENET_MEAN: Final[tuple[float, float, float]] = (0.485, 0.456, 0.406)
+IMAGENET_STD: Final[tuple[float, float, float]] = (0.229, 0.224, 0.225)
 WAFER_STATE_NAMES: Final[tuple[str, ...]] = (
     "outside_wafer",
     "functional_die",
@@ -44,18 +51,31 @@ class PreprocessingConfig:
             raise ValueError("target_size must be a tuple of two positive integers.")
         if self.geometry not in {"pad", "resize", "letterbox"}:
             raise ValueError(f"Unsupported geometry strategy: {self.geometry!r}.")
-        if self.encoding not in {"one_hot", "single_channel"}:
+        if self.encoding not in {"one_hot", "single_channel", "grayscale_rgb"}:
             raise ValueError(f"Unsupported encoding strategy: {self.encoding!r}.")
-        if self.normalization not in {"none", "divide_by_two"}:
+        if self.normalization not in {"none", "divide_by_two", "imagenet"}:
             raise ValueError(
                 f"Unsupported normalization strategy: {self.normalization!r}."
             )
         if self.encoding == "one_hot" and self.normalization != "none":
             raise ValueError("One-hot inputs must use normalization='none'.")
+        if self.normalization == "imagenet" and self.encoding != "grayscale_rgb":
+            # ImageNet statistics are per-RGB-channel and assume a
+            # photograph-like input. Applying them to indicator channels or to
+            # one grey channel is arithmetic without meaning.
+            raise ValueError(
+                "normalization='imagenet' requires encoding='grayscale_rgb'."
+            )
+        if self.encoding == "grayscale_rgb" and self.normalization == "divide_by_two":
+            # grayscale_rgb already maps the states into [0, 1].
+            raise ValueError(
+                "encoding='grayscale_rgb' already scales to [0, 1]; use "
+                "normalization='none' or 'imagenet'."
+            )
 
     @property
     def output_shape(self) -> tuple[int, int, int]:
-        channels = WAFER_STATE_COUNT if self.encoding == "one_hot" else 1
+        channels = 1 if self.encoding == "single_channel" else WAFER_STATE_COUNT
         return channels, *self.target_size
 
     def to_dict(self) -> dict[str, Any]:
@@ -172,6 +192,26 @@ def transform_categorical_map(
     )
 
 
+def background_fill(config: PreprocessingConfig) -> list[float]:
+    """Per-channel value meaning "no die here" under this encoding.
+
+    Free-angle rotation exposes corners that were outside the original grid,
+    and they have to be filled with a value that is *valid* for the encoding --
+    one-hot needs the background channel set, grayscale needs 0.0, and an
+    ImageNet-normalised input needs 0.0 pushed through the same normalisation.
+    Filling with plain zeros under one-hot would produce a cell belonging to no
+    state at all.
+    """
+
+    if config.encoding == "one_hot":
+        return [1.0] + [0.0] * (WAFER_STATE_COUNT - 1)
+    if config.encoding == "grayscale_rgb":
+        if config.normalization == "imagenet":
+            return [(0.0 - mean) / std for mean, std in zip(IMAGENET_MEAN, IMAGENET_STD)]
+        return [0.0] * WAFER_STATE_COUNT
+    return [0.0]
+
+
 def encode_categorical_map(categorical: Tensor, config: PreprocessingConfig) -> Tensor:
     """Encode a transformed categorical map for a PyTorch image model."""
 
@@ -181,6 +221,20 @@ def encode_categorical_map(categorical: Tensor, config: PreprocessingConfig) -> 
             .permute(2, 0, 1)
             .to(dtype=torch.float32)
         )
+
+    if config.encoding == "grayscale_rgb":
+        # States 0/1/2 -> 0.0/0.5/1.0, replicated across RGB. This deliberately
+        # reintroduces the false ordering that one-hot exists to remove (it
+        # implies a defect is "twice" a functional die); the trade is that the
+        # result looks like the photographs a pretrained backbone was fitted
+        # on. Which effect wins is measured, not argued.
+        grayscale = categorical.to(dtype=torch.float32) / (WAFER_STATE_COUNT - 1)
+        image = grayscale.expand(WAFER_STATE_COUNT, -1, -1).clone()
+        if config.normalization == "imagenet":
+            mean = torch.tensor(IMAGENET_MEAN, dtype=torch.float32)[:, None, None]
+            std = torch.tensor(IMAGENET_STD, dtype=torch.float32)[:, None, None]
+            image = (image - mean) / std
+        return image
 
     single_channel = categorical[None].to(dtype=torch.float32)
     if config.normalization == "divide_by_two":
@@ -214,7 +268,11 @@ def decode_preprocessed_map(tensor: Tensor, config: PreprocessingConfig) -> Tens
         return tensor.argmax(dim=0).to(dtype=torch.long)
 
     decoded = tensor[0]
-    if config.normalization == "divide_by_two":
+    if config.encoding == "grayscale_rgb":
+        if config.normalization == "imagenet":
+            decoded = decoded * IMAGENET_STD[0] + IMAGENET_MEAN[0]
+        decoded = decoded * (WAFER_STATE_COUNT - 1)
+    elif config.normalization == "divide_by_two":
         decoded = decoded * (WAFER_STATE_COUNT - 1)
     rounded = decoded.round()
     if not torch.allclose(decoded, rounded, rtol=0, atol=1e-6):
