@@ -102,11 +102,24 @@ Plan: pretrain an autoencoder on the unlabeled set, discard the decoder, attach 
 
 Rough cost at 64×64 with mixed precision: about a minute per epoch on a T4, so ~30 minutes for pretraining. The effort is in the fine-tuning protocol, not the compute.
 
-## 8. Generative augmentation — considered and deferred
+## 8. Generative augmentation — considered and dropped
 
-Synthesizing minority-class samples with an autoencoder or GAN to rebalance classes appears in recent work on this dataset. Deferred because a generator trained on ~104 examples of the rarest class produces interpolations of those 104 rather than new information, the classifier can end up learning the decoder's manifold, and it requires a firm guarantee that no synthetic image reaches validation. Cost is roughly a day including tuning. The 8 exact symmetries deliver a large fraction of the benefit for an afternoon of work and no modeling risk.
+Synthesizing minority-class samples with an autoencoder or GAN appears in recent work on this dataset. **The team decided not to pursue it.** A generator trained on ~104 examples of the rarest class produces interpolations of those 104 rather than new information, the classifier can end up learning the decoder's manifold, and it needs a firm guarantee that no synthetic image reaches validation — roughly a day of work including tuning. The 8 exact symmetries deliver a large fraction of the benefit for an afternoon and no modeling risk. Recorded here so the option is not re-litigated.
 
-## 9. Training and hardware
+## 9. How experiments are sequenced
+
+Anything that is not the model itself — preprocessing, augmentation, imbalance handling, optimizer settings — is compared **on a single fixed model**, and only the winning setup is carried to the real models. This is the same instrument-based approach the imbalance comparison already used, where one small CNN served as a controlled test bed for five strategies.
+
+The reason is cost and confounding: comparing an augmentation policy across three architectures at once means nine runs and no clean attribution when they disagree. One model, one variable at a time, then transfer.
+
+What transfers and what does not:
+
+- **Usually transfers:** augmentation policy, imbalance strategy, input encoding. These act on the data, and their effects are largely architecture-independent.
+- **Never transfers:** learning rate, epoch budget, input resolution, batch size. These are properties of the specific network and must be re-tuned when the winning setup moves to a real model.
+
+Treat a transferred setup as a strong starting point, not a finished configuration.
+
+## 10. Training and hardware
 
 **Budget.** The shared training config defaults to 4 epochs with patience 2 — deliberately small, chosen so eleven strategy comparisons could run quickly. It is not a training budget. Real runs should raise it substantially and confirm that early stopping actually triggers.
 
@@ -122,13 +135,21 @@ Synthesizing minority-class samples with an autoencoder or GAN to rebalance clas
 
 For a large transformer, freezing the backbone and precomputing embeddings once (~15 min for the labeled set) makes head experiments effectively free.
 
-**Determinism on GPU.** `set_reproducible_seed` calls `torch.use_deterministic_algorithms(True)`. On CUDA this raises unless `CUBLAS_WORKSPACE_CONFIG=:4096:8` is set before CUDA initializes, and several convolution and pooling backward kernels have no deterministic implementation at all, so `warn_only=True` is needed for training to proceed. GPU RNG itself is already handled — `torch.manual_seed` seeds all devices internally.
+**Seeding and determinism.** The current `set_reproducible_seed` calls `torch.use_deterministic_algorithms(True)`. On CUDA this raises unless `CUBLAS_WORKSPACE_CONFIG=:4096:8` is set before CUDA initializes, and several convolution and pooling backward kernels have no deterministic implementation at all, so `warn_only=True` is required for training to proceed.
+
+GPU random state itself is already correct — `torch.manual_seed` seeds all devices internally, so an explicit `torch.cuda.manual_seed_all` would be redundant. What is genuinely missing is **per-worker seeding**: dataloader workers fork with identical random state and will produce identical augmentations, silently reducing an 8× augmentation policy to 1×. The fix is to reshape the function along the lines of Lightning's `seed_everything` — Python, NumPy and PyTorch seeds, `PYTHONHASHSEED`, a derived seed per worker, and the CUDA settings above — while keeping it dependency-free.
 
 **Mixed precision.** Autocast operates inside the model and does not change what the dataloader returns; keep yielding float32 and let autocast handle the rest. T4 has no bf16, so use fp16 with a gradient scaler; A100 supports bf16 without one.
 
+**Optimizers and schedules.** Fine-tuning a pretrained backbone should train the whole network with **different learning rates per parameter group** — a small rate for pretrained weights, a larger one for the newly initialised head, typically 10–100× apart. Freezing the encoder is a memory fallback, not the intended approach: a frozen backbone cannot adapt features to categorical wafer maps, which are far from its natural-image pretraining distribution. Pair this with a schedule; cosine annealing with a short warmup is a reasonable default. The configuration format must therefore be able to express optimizer choice, schedule, and per-group learning rates — anything less restricts what can be tried.
+
+**LoRA** is worth one experiment if a large backbone is attempted. Training small low-rank adapters while the original weights stay frozen keeps memory low enough for a free GPU, and unlike plain freezing it still adapts the representation.
+
+**Checkpointing.** Colab disconnects without warning and wipes local disk, so checkpoints belong on Drive, written every epoch, and must include optimizer and RNG state as well as weights — otherwise a resumed run is not the same experiment. This only becomes important once budgets rise from 4 epochs to realistic ones, which is exactly what is planned.
+
 **Memory.** Cache raw wafer maps as `uint8` (~350 MB for all labeled data) and transform on the fly. Caching preprocessed float tensors would be ~8.5 GB at 64×64 and over 6 GB at 224×224, exceeding Colab's memory. The `uint8` cache also works for any target size, and once built the ~2 GB source dataframe can be released. Keep worker count at 0–2 for the same reason.
 
-## 10. Experiment configuration
+## 11. Experiment configuration
 
 **Decided: YAML files loaded into the existing config objects.** The three config objects already validate their fields and serialize themselves for run metadata, so a thin loader is all that is missing.
 
