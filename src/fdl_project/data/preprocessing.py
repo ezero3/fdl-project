@@ -146,10 +146,21 @@ def _letterbox(
 def transform_categorical_map(
     wafer_map: Any,
     config: PreprocessingConfig = DEFAULT_PREPROCESSING_CONFIG,
+    *,
+    validate: bool = True,
 ) -> Tensor:
-    """Apply deterministic geometry while keeping categorical states exact."""
+    """Apply deterministic geometry while keeping categorical states exact.
 
-    categorical = validate_wafer_map(wafer_map)
+    ``validate=False`` skips the state and dtype checks. Only pass it for maps
+    already validated once -- the dataset cache does this -- since the checks
+    are what keep an out-of-range value from silently becoming a class.
+    """
+
+    categorical = (
+        validate_wafer_map(wafer_map)
+        if validate
+        else torch.as_tensor(wafer_map).to(dtype=torch.long)
+    )
     if config.geometry == "pad":
         return _center_on_canvas(categorical, config.target_size)
     if config.geometry == "resize":
@@ -221,9 +232,9 @@ class WaferMapPreprocessor:
     ) -> None:
         self.config = config
 
-    def transform_categories(self, wafer_map: Any) -> Tensor:
-        return transform_categorical_map(wafer_map, self.config)
+    def transform_categories(self, wafer_map: Any, *, validate: bool = True) -> Tensor:
+        return transform_categorical_map(wafer_map, self.config, validate=validate)
 
-    def __call__(self, wafer_map: Any) -> Tensor:
-        categorical = self.transform_categories(wafer_map)
+    def __call__(self, wafer_map: Any, *, validate: bool = True) -> Tensor:
+        categorical = self.transform_categories(wafer_map, validate=validate)
         return encode_categorical_map(categorical, self.config)

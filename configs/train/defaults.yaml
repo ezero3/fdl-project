@@ -11,6 +11,10 @@ data:
   split_directory: data/splits
   num_workers: 2
   pin_memory: true
+  # Copy this split's raw uint8 maps into memory (~350 MB for all labeled
+  # data) and drop the 2 GB source table. Geometry and encoding still run per
+  # batch; caching the preprocessed float tensors would be ~8.5 GB at 64x64.
+  cache: true
   # subset: 2000          # smoke tests only; never set for a real run
   preprocessing:
     target_size: [64, 64]

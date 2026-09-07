@@ -132,3 +132,62 @@ def test_training_loader_shuffle_is_reproducible() -> None:
 
     assert torch.equal(first_order, second_order)
     assert sorted(first_order.tolist()) == sorted(indices.tolist())
+
+
+def test_caching_yields_identical_tensors(tmp_path) -> None:
+    """The cache must change speed and memory, never the data."""
+
+    frame = _toy_dataframe()
+    np.save(tmp_path / "train_indices.npy", frame.index.to_numpy())
+    plain = create_split_dataset(frame, tmp_path, "train")
+    cached = create_split_dataset(frame, tmp_path, "train", cache_maps=True)
+
+    assert cached.cached_maps is not None
+    assert len(cached.cached_maps) == len(cached)
+    assert all(item.dtype == np.uint8 for item in cached.cached_maps)
+    for position in range(len(plain)):
+        expected = plain[position]
+        actual = cached[position]
+        assert torch.equal(expected[0], actual[0])
+        assert torch.equal(expected[1], actual[1])
+        assert torch.equal(expected[2], actual[2])
+
+
+def test_caching_releases_the_source_table(tmp_path) -> None:
+    """Holding the 2 GB pickle would make the copy pure overhead."""
+
+    frame = _toy_dataframe()
+    np.save(tmp_path / "train_indices.npy", frame.index.to_numpy())
+    cached = create_split_dataset(frame, tmp_path, "train", cache_maps=True)
+
+    assert cached.dataframe is None
+
+
+def test_select_returns_a_subset_view(tmp_path) -> None:
+    frame = _toy_dataframe()
+    np.save(tmp_path / "train_indices.npy", frame.index.to_numpy())
+    for cache_maps in (False, True):
+        dataset = create_split_dataset(
+            frame, tmp_path, "train", cache_maps=cache_maps
+        )
+        subset = dataset.select(np.array([2, 0]))
+
+        assert len(subset) == 2
+        # positions are sorted, so the subset keeps dataset order
+        assert list(subset.row_indices) == [
+            int(dataset.row_indices[0]),
+            int(dataset.row_indices[2]),
+        ]
+        assert torch.equal(subset[1][0], dataset[2][0])
+        assert subset.split_name == dataset.split_name
+
+
+@pytest.mark.parametrize("positions", [[], [0, 0], [-1], [999]])
+def test_select_rejects_invalid_positions(
+    tmp_path, positions: list[int]
+) -> None:
+    frame = _toy_dataframe()
+    np.save(tmp_path / "train_indices.npy", frame.index.to_numpy())
+    dataset = create_split_dataset(frame, tmp_path, "train")
+    with pytest.raises(ValueError):
+        dataset.select(np.array(positions, dtype=np.int64))

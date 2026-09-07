@@ -60,6 +60,7 @@ class DataConfig:
     split_directory: Path = Path("data/splits")
     num_workers: int = 0
     pin_memory: bool = False
+    cache: bool = True
     preprocessing: PreprocessingConfig = PreprocessingConfig()
     subset: int | None = None
 
@@ -69,6 +70,8 @@ class DataConfig:
         _require_non_negative_integer(self.num_workers, "data.num_workers")
         if not isinstance(self.pin_memory, bool):
             raise ValueError("data.pin_memory must be a boolean.")
+        if not isinstance(self.cache, bool):
+            raise ValueError("data.cache must be a boolean.")
         if not isinstance(self.preprocessing, PreprocessingConfig):
             raise ValueError("data.preprocessing must be a PreprocessingConfig.")
         if self.subset is not None:
@@ -80,6 +83,7 @@ class DataConfig:
             "split_directory": str(self.split_directory),
             "num_workers": self.num_workers,
             "pin_memory": self.pin_memory,
+            "cache": self.cache,
             "preprocessing": self.preprocessing.to_dict(),
             "subset": self.subset,
         }
