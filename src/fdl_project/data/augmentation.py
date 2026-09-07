@@ -29,6 +29,18 @@ from torch import Tensor
 #: Rotations by 90 degrees, each optionally mirrored: |D4| = 8.
 NUM_DIHEDRAL_TRANSFORMS = 8
 
+#: Named subgroups of D4. Every one is closed and label-preserving, so an
+#: ablation between them is a fair comparison rather than three different
+#: amounts of noise.
+#:
+#: index 0-3 rotate by 0/90/180/270; 4-7 are those rotations then mirrored.
+#: So 4 is the horizontal mirror, 6 the vertical mirror, and 2 is both.
+TRANSFORM_SUBSETS: dict[str, tuple[int, ...]] = {
+    "dihedral8": (0, 1, 2, 3, 4, 5, 6, 7),  # full D4
+    "rotations": (0, 1, 2, 3),              # C4: rotations only
+    "flips": (0, 2, 4, 6),                  # Klein group: identity, h, v, both
+}
+
 
 def apply_dihedral(tensor: Tensor, index: int) -> Tensor:
     """Apply one of the eight square symmetries to the last two dimensions.
@@ -58,13 +70,13 @@ def dihedral_views(tensor: Tensor) -> list[Tensor]:
 
 @dataclass(frozen=True)
 class DihedralAugmentation:
-    """Pick one of the eight symmetries per sample.
+    """Pick one symmetry per sample from a chosen subgroup of D4.
 
-    ``probability`` is the chance of applying a *non-identity* transform; at
-    1.0 every sample is drawn uniformly from all eight, which includes the
-    identity one time in eight.
+    ``probability`` is the chance of augmenting at all; at 1.0 every sample is
+    drawn uniformly from ``transforms``, which includes the identity.
     """
 
+    transforms: tuple[int, ...] = TRANSFORM_SUBSETS["dihedral8"]
     probability: float = 1.0
 
     def __post_init__(self) -> None:
@@ -74,6 +86,16 @@ class DihedralAugmentation:
             or not 0.0 <= self.probability <= 1.0
         ):
             raise ValueError("augmentation probability must lie in [0, 1].")
+        transforms = tuple(int(index) for index in self.transforms)
+        if not transforms:
+            raise ValueError("augmentation transforms must not be empty.")
+        if any(not 0 <= index < NUM_DIHEDRAL_TRANSFORMS for index in transforms):
+            raise ValueError(
+                f"transform indices must lie in [0, {NUM_DIHEDRAL_TRANSFORMS})."
+            )
+        if len(set(transforms)) != len(transforms):
+            raise ValueError("transform indices must be unique.")
+        object.__setattr__(self, "transforms", transforms)
 
     def __call__(self, tensor: Tensor) -> Tensor:
         """Augment one sample, drawing from the ambient (seeded) torch RNG.
@@ -83,33 +105,32 @@ class DihedralAugmentation:
         reproducible for a given seed and differ between workers.
         """
 
-        if self.probability < 1.0:
-            if float(torch.rand(())) >= self.probability:
-                return tensor
-        index = int(torch.randint(NUM_DIHEDRAL_TRANSFORMS, ()))
-        return apply_dihedral(tensor, index)
+        if self.probability < 1.0 and float(torch.rand(())) >= self.probability:
+            return tensor
+        choice = int(torch.randint(len(self.transforms), ()))
+        return apply_dihedral(tensor, self.transforms[choice])
 
 
-#: Name -> factory. Augmentation is train-only; see WM811KDataset.
-AUGMENTATION_REGISTRY = {
-    "dihedral8": DihedralAugmentation,
-}
+def build_augmentation(
+    name: str | None, **kwargs: float
+) -> DihedralAugmentation | None:
+    """Build a configured augmentation, or ``None`` when disabled.
 
-
-def build_augmentation(name: str | None, **kwargs: float) -> DihedralAugmentation | None:
-    """Build a configured augmentation, or ``None`` when disabled."""
+    Augmentation is off unless a config names one, and is train-only -- see
+    ``WM811KDataset``, which refuses it on validation and test.
+    """
 
     if name is None:
         return None
     try:
-        factory = AUGMENTATION_REGISTRY[name]
+        transforms = TRANSFORM_SUBSETS[name]
     except KeyError:
-        available = ", ".join(sorted(AUGMENTATION_REGISTRY))
+        available = ", ".join(sorted(TRANSFORM_SUBSETS))
         raise KeyError(
             f"Unknown augmentation {name!r}. Available: {available}."
         ) from None
-    return factory(**kwargs)
+    return DihedralAugmentation(transforms=transforms, **kwargs)
 
 
 def available_augmentations() -> tuple[str, ...]:
-    return tuple(sorted(AUGMENTATION_REGISTRY))
+    return tuple(sorted(TRANSFORM_SUBSETS))

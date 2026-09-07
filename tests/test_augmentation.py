@@ -9,6 +9,7 @@ from torch import nn
 
 from fdl_project.data.augmentation import (
     NUM_DIHEDRAL_TRANSFORMS,
+    TRANSFORM_SUBSETS,
     DihedralAugmentation,
     apply_dihedral,
     available_augmentations,
@@ -82,6 +83,40 @@ def test_augmentation_actually_varies_the_view() -> None:
     assert len(views) == NUM_DIHEDRAL_TRANSFORMS
 
 
+@pytest.mark.parametrize(
+    ("name", "size"), [("dihedral8", 8), ("rotations", 4), ("flips", 4)]
+)
+def test_subgroups_draw_only_from_their_own_transforms(name: str, size: int) -> None:
+    """Each named subset is a closed subgroup of D4, so ablating between them
+    compares structure rather than three different amounts of noise."""
+
+    seed_everything(86)
+    augmentation = build_augmentation(name)
+    wafer = _wafer()
+    views = {augmentation(wafer).numpy().tobytes() for _ in range(300)}
+    allowed = {
+        apply_dihedral(wafer, index).numpy().tobytes()
+        for index in TRANSFORM_SUBSETS[name]
+    }
+
+    assert len(augmentation.transforms) == size
+    assert views == allowed
+
+
+def test_flips_are_the_actual_mirrors() -> None:
+    wafer = _wafer()
+    horizontal, vertical = TRANSFORM_SUBSETS["flips"][2], TRANSFORM_SUBSETS["flips"][3]
+
+    assert torch.equal(apply_dihedral(wafer, horizontal), torch.flip(wafer, dims=(-1,)))
+    assert torch.equal(apply_dihedral(wafer, vertical), torch.flip(wafer, dims=(-2,)))
+
+
+@pytest.mark.parametrize("transforms", [(), (0, 0), (9,), (-1,)])
+def test_invalid_transform_sets_are_rejected(transforms: tuple[int, ...]) -> None:
+    with pytest.raises(ValueError):
+        DihedralAugmentation(transforms=transforms)
+
+
 def test_probability_zero_is_the_identity() -> None:
     seed_everything(86)
     augmentation = DihedralAugmentation(probability=0.0)
@@ -97,7 +132,8 @@ def test_invalid_probabilities_are_rejected(probability: object) -> None:
 
 
 def test_the_registry_reports_and_validates_names() -> None:
-    assert "dihedral8" in available_augmentations()
+    assert set(available_augmentations()) == {"dihedral8", "rotations", "flips"}
+    # off unless a config asks for it
     assert build_augmentation(None) is None
     assert isinstance(build_augmentation("dihedral8"), DihedralAugmentation)
     with pytest.raises(KeyError, match="dihedral8"):

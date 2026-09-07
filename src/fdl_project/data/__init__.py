@@ -2,6 +2,7 @@
 
 from fdl_project.data.augmentation import (
     NUM_DIHEDRAL_TRANSFORMS,
+    TRANSFORM_SUBSETS,
     DihedralAugmentation,
     apply_dihedral,
     available_augmentations,
@@ -42,6 +43,7 @@ from fdl_project.data.preprocessing import (
 __all__ = [
     "DEFAULT_IMBALANCE_CONFIG",
     "NUM_DIHEDRAL_TRANSFORMS",
+    "TRANSFORM_SUBSETS",
     "DihedralAugmentation",
     "apply_dihedral",
     "available_augmentations",

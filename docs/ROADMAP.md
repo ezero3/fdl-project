@@ -123,21 +123,31 @@ Look at what the models get wrong, not only how much. Inspect the most-confused 
 ## P2 — Improves the numbers
 
 ### 10. Data augmentation
-Use the 8 exact symmetries — 4 rotations by 90° and their mirrors. These are index permutations, so they introduce no interpolation and no invalid pixel values, and they preserve every class label.
+Use exact symmetries — the 4 rotations by 90° and their mirrors, or a subgroup of them. These are index permutations, so they introduce no interpolation and no invalid pixel values, and they preserve every class label.
 
 **Do not use free-angle rotation** (destroys thin scratch patterns) and **be careful with translation**: shifting a localized defect toward the wafer edge can genuinely turn a `Loc` into an `Edge-Loc` while keeping the old label.
 
 *Why:* the minority classes are oversampled with replacement today, so the model sees the same handful of images repeatedly. Augmentation turns each repeat into a different view — the two techniques compound.
 *Done when:* augmentation applies to training only, validation and test are provably untouched, and a fixed seed reproduces the same views. ✅
 
-Configured per experiment; off by default:
+**Off by default.** A config has to ask for it:
 
 ```yaml
 data:
   augmentation:
-    name: dihedral8      # null | dihedral8
+    name: dihedral8      # null (default) | dihedral8 | rotations | flips
     probability: 1.0
 ```
+
+Three named options, all closed subgroups of D4 — so an ablation between them compares *structure*, not three different amounts of noise:
+
+| name | transforms | group |
+|---|---|---|
+| `dihedral8` | all 8 | D4 |
+| `rotations` | 4 rotations by 90° | C4 |
+| `flips` | identity, horizontal, vertical, both | Klein four-group |
+
+Horizontal and vertical flips are not a separate mechanism — they are elements of D4, so `dihedral8` already includes them. `flips` exists to isolate them.
 
 `WM811KDataset` **raises** if augmentation is passed with a validation or test split, so "provably untouched" is enforced rather than remembered. Views are drawn from torch's seeded RNG, which `seed_worker` re-seeds per dataloader worker. Free-angle rotation and translation are not reachable from config at all — the registry has one entry.
 

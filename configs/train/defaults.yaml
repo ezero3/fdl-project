@@ -26,7 +26,13 @@ data:
   # every one of them preserves the label. Free-angle rotation and translation
   # are deliberately unavailable -- see docs/ROADMAP.md item 10.
   augmentation:
-    name: null            # null | dihedral8
+    # null (default, off) | dihedral8 | rotations | flips
+    #   dihedral8  all 8 square symmetries (D4)
+    #   rotations  the 4 rotations only (C4)
+    #   flips      identity, horizontal, vertical, both (Klein group)
+    # The subsets exist so a gain can be attributed; all three are closed
+    # subgroups, so comparing them compares structure, not noise level.
+    name: null
     probability: 1.0
 
 # The validated policy from the class-imbalance experiment. Presets:
