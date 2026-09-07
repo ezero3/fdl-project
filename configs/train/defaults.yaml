@@ -83,7 +83,7 @@ scheduler:
   kwargs: {}
 
 trainer:
-  max_epochs: 40
+  max_epochs: 50
   # Throughput on the 64x64 models is flat from batch 64 to 1024 (the GPU sits
   # at ~15% while the CPU transforms), so a large batch buys no speed and costs
   # optimizer steps: 512 gives 237 steps/epoch against 473 at 256.
