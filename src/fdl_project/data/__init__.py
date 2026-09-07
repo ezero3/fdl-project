@@ -1,14 +1,13 @@
-"""Shared utilities for the WM-811K deep-learning project."""
+"""Dataset construction, wafer-map preprocessing, and imbalance handling."""
 
-from fdl_project.constants import (
-    CLASS_NAMES,
-    CLASS_TO_INDEX,
-    INDEX_TO_CLASS,
-    NUM_CLASSES,
-    class_encoding_metadata,
-    decode_index,
-    encode_label,
-    validate_checkpoint_class_names,
+from fdl_project.data.augmentation import (
+    NUM_DIHEDRAL_TRANSFORMS,
+    TRANSFORM_SUBSETS,
+    DihedralAugmentation,
+    apply_dihedral,
+    available_augmentations,
+    build_augmentation,
+    dihedral_views,
 )
 from fdl_project.data.datasets import (
     WM811KDataset,
@@ -16,6 +15,7 @@ from fdl_project.data.datasets import (
     create_split_dataset,
     load_split_indices,
     load_wm811k_dataframe,
+    normalize_scalar_label,
 )
 from fdl_project.data.imbalance import (
     DEFAULT_IMBALANCE_CONFIG,
@@ -39,58 +39,37 @@ from fdl_project.data.preprocessing import (
     transform_categorical_map,
     validate_wafer_map,
 )
-from fdl_project.evaluation import (
-    BootstrapResult,
-    CollectedPredictions,
-    EvaluationResult,
-    bootstrap_evaluation,
-    collect_predictions,
-    evaluate_model,
-    evaluate_predictions,
-    save_evaluation_results,
-)
-from fdl_project.models.baseline_cnn import BaselineCNN, count_trainable_parameters
 
 __all__ = [
-    "CLASS_NAMES",
-    "CLASS_TO_INDEX",
     "DEFAULT_IMBALANCE_CONFIG",
+    "NUM_DIHEDRAL_TRANSFORMS",
+    "TRANSFORM_SUBSETS",
+    "DihedralAugmentation",
+    "apply_dihedral",
+    "available_augmentations",
+    "build_augmentation",
+    "dihedral_views",
     "DEFAULT_PREPROCESSING_CONFIG",
-    "INDEX_TO_CLASS",
-    "NUM_CLASSES",
     "PRESET_IMBALANCE_CONFIGS",
     "WAFER_STATE_COUNT",
     "WAFER_STATE_NAMES",
-    "BaselineCNN",
-    "BootstrapResult",
-    "CollectedPredictions",
-    "EvaluationResult",
     "FocalLoss",
     "ImbalanceConfig",
     "PreprocessingConfig",
     "WM811KDataset",
     "WaferMapPreprocessor",
-    "bootstrap_evaluation",
     "build_training_loss",
     "build_weighted_sampler",
-    "class_encoding_metadata",
-    "collect_predictions",
     "compute_class_counts",
     "compute_class_weights",
-    "count_trainable_parameters",
     "create_dataloader",
     "create_imbalance_training_dataloader",
     "create_split_dataset",
-    "decode_index",
     "decode_preprocessed_map",
-    "encode_label",
-    "evaluate_model",
-    "evaluate_predictions",
     "imbalance_metadata",
     "load_split_indices",
     "load_wm811k_dataframe",
-    "save_evaluation_results",
+    "normalize_scalar_label",
     "transform_categorical_map",
-    "validate_checkpoint_class_names",
     "validate_wafer_map",
 ]

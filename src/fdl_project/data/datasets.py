@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 from pathlib import Path
 from typing import Any, Literal
 
@@ -12,11 +13,14 @@ from torch import Tensor
 from torch.utils.data import DataLoader, Dataset
 
 from fdl_project.constants import encode_label
-from fdl_project.preprocessing import (
+from fdl_project.data.augmentation import DihedralAugmentation
+from fdl_project.data.preprocessing import (
     DEFAULT_PREPROCESSING_CONFIG,
     PreprocessingConfig,
     WaferMapPreprocessor,
+    validate_wafer_map,
 )
+from fdl_project.training.seed import build_dataloader_generator, seed_worker
 
 SplitName = Literal["train", "validation", "test"]
 _SPLIT_NAMES = frozenset({"train", "validation", "test"})
@@ -92,9 +96,17 @@ class WM811KDataset(Dataset[tuple[Tensor, Tensor, Tensor]]):
         *,
         split_name: SplitName,
         preprocessing_config: PreprocessingConfig = DEFAULT_PREPROCESSING_CONFIG,
+        cache_maps: bool = False,
+        augmentation: DihedralAugmentation | None = None,
     ) -> None:
         if split_name not in _SPLIT_NAMES:
             raise ValueError(f"Unknown split {split_name!r}.")
+        if augmentation is not None and split_name != "train":
+            # Validation and test are evaluated at their natural distribution;
+            # augmenting them would make every model's numbers incomparable.
+            raise ValueError(
+                f"Augmentation is train-only; refusing to augment {split_name!r}."
+            )
         if not dataframe.index.is_unique:
             raise ValueError("WM-811K DataFrame index must be unique.")
         missing_columns = {"waferMap", "failureType"} - set(dataframe.columns)
@@ -138,14 +150,72 @@ class WM811KDataset(Dataset[tuple[Tensor, Tensor, Tensor]]):
         self.split_name = split_name
         self.preprocessing_config = preprocessing_config
         self.preprocessor = WaferMapPreprocessor(preprocessing_config)
+        self.augmentation = augmentation
+        self.cached_maps: list[np.ndarray] | None = None
+        if cache_maps:
+            self._build_cache()
+
+    def _build_cache(self) -> None:
+        """Copy this split's raw maps out of the source table as uint8.
+
+        Only the *raw* categorical maps are cached, around 350 MB for all
+        labeled data. Caching preprocessed float tensors instead would be
+        ~8.5 GB at 64x64 and far more at 224x224, and it would also be wrong
+        once augmentation makes the transform output differ per epoch.
+
+        Dropping the reference to the 2 GB source table afterwards is the
+        point: with it held, the copy is pure overhead. Dataloader workers
+        inherit the cache by fork on Linux and Colab; a spawn-based platform
+        copies it per worker.
+        """
+
+        # validate_wafer_map here rather than on every access: the checks
+        # cost ~8.6 us per item, and a cached map cannot change between epochs.
+        self.cached_maps = [
+            validate_wafer_map(self.dataframe.at[int(row_index), "waferMap"])
+            .to(dtype=torch.uint8)
+            .numpy()
+            for row_index in self.row_indices
+        ]
+        self.dataframe = None
+
+    def wafer_map(self, position: int) -> Any:
+        """Return one raw categorical map, from the cache when there is one."""
+
+        if self.cached_maps is not None:
+            return self.cached_maps[position]
+        return self.dataframe.at[int(self.row_indices[position]), "waferMap"]
+
+    def select(self, positions: np.ndarray) -> "WM811KDataset":
+        """Return a view over a subset of positions, sharing this split's data."""
+
+        chosen = np.sort(np.asarray(positions, dtype=np.int64))
+        if len(chosen) == 0 or len(np.unique(chosen)) != len(chosen):
+            raise ValueError("positions must be non-empty and unique.")
+        if chosen.min() < 0 or chosen.max() >= len(self):
+            raise ValueError("positions must lie inside the dataset.")
+
+        subset = copy.copy(self)
+        subset.row_indices = self.row_indices[chosen].copy()
+        subset.row_indices.setflags(write=False)
+        subset.target_indices = self.target_indices[chosen].copy()
+        subset.target_indices.setflags(write=False)
+        if self.cached_maps is not None:
+            subset.cached_maps = [self.cached_maps[index] for index in chosen]
+        return subset
 
     def __len__(self) -> int:
         return len(self.row_indices)
 
     def __getitem__(self, position: int) -> tuple[Tensor, Tensor, Tensor]:
         row_index = int(self.row_indices[position])
-        wafer_map = self.dataframe.at[row_index, "waferMap"]
-        image = self.preprocessor(wafer_map)
+        # Cached maps were validated once when the cache was built.
+        image = self.preprocessor(
+            self.wafer_map(position), validate=self.cached_maps is None
+        )
+        if self.augmentation is not None:
+            # The class index lets a policy augment rare classes more heavily.
+            image = self.augmentation(image, int(self.target_indices[position]))
         target = torch.tensor(int(self.target_indices[position]), dtype=torch.long)
         source_index = torch.tensor(row_index, dtype=torch.long)
         return image, target, source_index
@@ -157,6 +227,8 @@ def create_split_dataset(
     split_name: SplitName,
     *,
     preprocessing_config: PreprocessingConfig = DEFAULT_PREPROCESSING_CONFIG,
+    cache_maps: bool = False,
+    augmentation: DihedralAugmentation | None = None,
 ) -> WM811KDataset:
     """Build a supervised Dataset from one persisted split."""
 
@@ -165,6 +237,8 @@ def create_split_dataset(
         load_split_indices(split_directory, split_name),
         split_name=split_name,
         preprocessing_config=preprocessing_config,
+        cache_maps=cache_maps,
+        augmentation=augmentation,
     )
 
 
@@ -196,10 +270,10 @@ def create_dataloader(
     if dataset.split_name in {"validation", "test"} and should_shuffle:
         raise ValueError("Validation and test DataLoaders must use shuffle=False.")
 
-    generator = None
-    if should_shuffle:
-        generator = torch.Generator()
-        generator.manual_seed(seed)
+    # The generator drives shuffling and, together with seed_worker, the
+    # per-worker random streams; workers that share one seed would repeat the
+    # same augmented views every epoch.
+    generator = build_dataloader_generator(seed)
 
     return DataLoader(
         dataset,
@@ -210,4 +284,5 @@ def create_dataloader(
         drop_last=False,
         persistent_workers=num_workers > 0,
         generator=generator,
+        worker_init_fn=seed_worker if num_workers > 0 else None,
     )

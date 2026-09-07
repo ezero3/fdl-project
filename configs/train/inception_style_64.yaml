@@ -1,0 +1,16 @@
+name: inception-style-64
+
+model:
+  name: inception_style
+  kwargs: {}
+    # attention: cbam      # item 11: run with and without, nothing else changed
+
+scheduler:
+  name: cosine_with_warmup
+  interval: epoch
+  kwargs:
+    warmup_epochs: 3
+    min_lr_ratio: 0.01
+
+trainer:
+  batch_size: 256

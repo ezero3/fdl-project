@@ -10,7 +10,7 @@ Terminology used throughout: a wafer map is a 2-D grid whose cells are one of th
 
 **Decided.** One-hot encode the three states into 3 channels rather than feeding the raw `{0,1,2}` grid as a single channel. A single channel implies `2` is "twice" `1`, which is meaningless. Implemented in `preprocessing.py`; the default config already produces `(3, 64, 64)` float32.
 
-**Open experiment.** Pretrained backbones were trained on natural RGB images, so one-hot channels are unlike anything in their pretraining distribution. Worth testing both: raw one-hot, and mapping the three states to a grayscale-style image with ImageNet normalization. Cheap, and occasionally makes a large difference.
+**Open experiment.** Pretrained backbones were trained on natural RGB images, so one-hot channels are unlike anything in their pretraining distribution. Worth testing both: raw one-hot, and mapping the three states to a grayscale-style image with ImageNet normalization. Cheap, and occasionally makes a large difference. Now a task — see ROADMAP item 5. Note the tension: the grayscale arm knowingly reintroduces the false numeric ordering that the decision above rejects, buying distribution-match with the pretrained filters in exchange. That trade only makes sense for a pretrained encoder, so the comparison is scoped to that model and its outcome does not transfer to the from-scratch CNNs. Implementing it needs a new `normalization` strategy in `preprocessing.py` plus channel replication; the current validator rejects one-hot combined with any normalization.
 
 ## 2. Fixed input size
 
@@ -158,6 +158,8 @@ GPU random state itself is already correct — `torch.manual_seed` seeds all dev
 **Colab.** Install the package with `pip install -e . --no-deps` rather than syncing the lock file — Colab's PyTorch is matched to its driver, and a lock-driven install can replace it with a build that does not match. Keep the dataset on Drive rather than re-downloading each session. Record the actual torch version in run metadata so the divergence from the local lock is visible.
 
 **Logging.** The training loop already accepts a per-epoch callback receiving a flat metrics dict, which matches what experiment trackers expect, so no changes to the training code are needed. Use a private project — the repository is private, and a public tracker project would publish metrics, configs and confusion matrices.
+
+`wandb` is an optional dependency, imported lazily, so the package and its tests run without it. Locally that means `uv sync --extra logging`; on Colab it needs a separate `!pip install wandb`, because the `--no-deps` install above skips extras along with everything else. The API key goes in Colab Secrets as `WANDB_API_KEY`, never in a cell.
 
 ## 12. External results, and why most of them are not comparable
 

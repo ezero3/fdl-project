@@ -5,13 +5,16 @@ from __future__ import annotations
 from torch import Tensor, nn
 
 from fdl_project.constants import NUM_CLASSES
-from fdl_project.preprocessing import WAFER_STATE_COUNT
+from fdl_project.data.preprocessing import WAFER_STATE_COUNT
+from fdl_project.models.attention import build_attention
 
 
 class BaselineCNN(nn.Module):
     """Compact spatial CNN used as a task-05 experimental instrument."""
 
-    def __init__(self, *, dropout: float = 0.2) -> None:
+    def __init__(
+        self, *, dropout: float = 0.2, attention: str | None = None
+    ) -> None:
         super().__init__()
         if not 0 <= dropout < 1:
             raise ValueError("dropout must be in [0, 1).")
@@ -25,8 +28,11 @@ class BaselineCNN(nn.Module):
             nn.Conv2d(32, 64, kernel_size=3, stride=2, padding=1),
             nn.BatchNorm2d(64),
             nn.ReLU(inplace=True),
-            nn.AdaptiveAvgPool2d((4, 4)),
         )
+        # Shape-preserving, and placed while the map still has spatial extent:
+        # after pooling there is nothing left for spatial attention to weigh.
+        self.attention = build_attention(attention, 64) or nn.Identity()
+        self.pool = nn.AdaptiveAvgPool2d((4, 4))
         self.classifier = nn.Sequential(
             nn.Flatten(),
             nn.Linear(64 * 4 * 4, 128),
@@ -42,7 +48,7 @@ class BaselineCNN(nn.Module):
             )
         if not inputs.is_floating_point():
             raise TypeError("BaselineCNN inputs must be floating-point tensors.")
-        return self.classifier(self.features(inputs))
+        return self.classifier(self.pool(self.attention(self.features(inputs))))
 
 
 def count_trainable_parameters(model: nn.Module) -> int:

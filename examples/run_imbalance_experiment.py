@@ -5,7 +5,7 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from fdl_project.imbalance_experiment import run_class_imbalance_experiment
+from fdl_project.analysis.imbalance_experiment import run_class_imbalance_experiment
 
 
 def parse_args() -> argparse.Namespace:

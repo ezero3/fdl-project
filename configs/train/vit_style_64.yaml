@@ -1,0 +1,39 @@
+# A small ViT, run as a controlled negative result. See models/vit.py for why
+# it is expected to underperform and why it is still worth measuring.
+#
+# image_size must match data.preprocessing.target_size: the positional table
+# is sized at construction, and the model raises if they disagree.
+name: vit-style-64
+
+model:
+  name: vit_style
+  kwargs:
+    image_size: 64
+    patch_size: 8
+    embedding_dimension: 192
+    depth: 6
+    heads: 3
+    dropout: 0.1
+
+data:
+  # Transformers have no convolutional prior to fall back on, so they lean on
+  # augmentation harder than the CNNs do. This is the one config where it is
+  # on by default.
+  augmentation:
+    name: dihedral8
+
+optimizer:
+  name: adamw
+  kwargs:
+    lr: 3.0e-4          # transformers want a lower rate than the CNNs
+    weight_decay: 0.05  # and much stronger decay
+
+scheduler:
+  name: cosine_with_warmup
+  interval: epoch
+  kwargs:
+    warmup_epochs: 5    # longer warmup; ViTs are unstable early
+    min_lr_ratio: 0.01
+
+trainer:
+  batch_size: 256

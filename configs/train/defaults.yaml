@@ -1,0 +1,111 @@
+# Shared defaults for every training config in this directory.
+#
+# An experiment file only states what it changes; this file is deep-merged
+# underneath it. Unknown keys are a hard error, so a typo stops the run
+# instead of silently training the default.
+
+seed: 86
+
+data:
+  dataset_path: data/MIR-WM811K/WM811K.pkl
+  split_directory: data/splits
+  num_workers: 2
+  pin_memory: true
+  # Copy this split's raw uint8 maps into memory (~350 MB for all labeled
+  # data) and drop the 2 GB source table. Geometry and encoding still run per
+  # batch; caching the preprocessed float tensors would be ~8.5 GB at 64x64.
+  cache: true
+  # subset: 2000          # smoke tests only; never set for a real run
+  preprocessing:
+    target_size: [64, 64]
+    geometry: letterbox   # aspect-ratio preserving; see docs/design-notes.md
+    encoding: one_hot     # 3 channels: background / functional / defective die
+    normalization: none
+  # Train-only. 'dihedral8' is the 4 rotations by 90 degrees and their mirrors:
+  # index permutations, so no interpolation and no invalid cell states, and
+  # every one of them preserves the label. Free-angle rotation and translation
+  # are deliberately unavailable -- see docs/ROADMAP.md item 10.
+  augmentation:
+    # null (default, off) | dihedral8 | rotations | flips | rotation
+    #   dihedral8  all 8 square symmetries (D4)      exact permutation
+    #   rotations  the 4 rotations by 90 degrees     exact permutation
+    #   flips      identity, horizontal, vertical    exact permutation
+    #   rotation   free angle, nearest neighbour     resamples; see item 10
+    # The three subgroups are closed, so comparing them compares structure
+    # rather than noise level. `rotation` is the only one that resamples;
+    # measured defect loss is under 1% and no wafer loses its pattern.
+    name: null
+    # Chance a sample is touched at all -- NOT a strength dial. The identity is
+    # already one of the 8 group elements, so at 1.0 a sample is unchanged 12.5%
+    # of the time; at 0.5 it is unchanged 56%. Keep it at 1.0 for the exact
+    # subsets: that makes the training distribution uniform over the group, and
+    # the orientation the fab recorded has no special status. It is a real knob
+    # only for `rotation`, where it trades augmentation against keeping clean
+    # unresampled examples.
+    probability: 1.0
+    kwargs: {}            # rotation takes: {degrees: 180.0}
+    # Optional: augment some classes more than others. Classes not listed keep
+    # `probability`. Only the exact-permutation options may vary by class --
+    # `rotation` resamples, and applying that unevenly would let the network
+    # read the augmentation as a class hint instead of learning the defect.
+    # Note the weighted sampler already compounds with augmentation: a rare
+    # wafer drawn 40x an epoch already yields 40 different views.
+    #   class_probabilities: {Scratch: 1.0, Near-full: 1.0, none: 0.0}
+    class_probabilities: {}
+
+# The validated policy from the class-imbalance experiment. Presets:
+# unweighted_ce, inverse_sqrt_ce, effective_number_ce, inverse_sqrt_sampler,
+# focal_loss.
+imbalance:
+  preset: inverse_sqrt_sampler
+
+model:
+  name: baseline_cnn
+  kwargs: {}
+
+optimizer:
+  name: adamw
+  kwargs:
+    lr: 1.0e-3
+    weight_decay: 1.0e-4
+  # param_groups lets one model train at several learning rates at once;
+  # see configs/train/resnet18_224_finetune.yaml.
+  param_groups: []
+
+scheduler:
+  name: null              # null keeps the learning rate constant
+  interval: epoch
+  kwargs: {}
+
+trainer:
+  max_epochs: 40
+  batch_size: 512
+  max_gradient_norm: 5.0
+  amp: true               # fp16 on CUDA; ignored on CPU and MPS
+  device: auto
+  early_stopping:
+    monitor: validation_macro_f1
+    mode: max
+    patience: 5
+    min_epochs: 5
+
+checkpoint:
+  # On Colab point this at mounted Drive:
+  #   /content/drive/MyDrive/fdl-project/checkpoints
+  # Local disk there is wiped when the session drops.
+  directory: trained-models/checkpoints
+  # Rolling per-epoch history. A ResNet18 checkpoint is ~140 MB (weights plus
+  # AdamW moments), so each retained epoch is expensive on a 15 GB Drive.
+  # Resume reads the newest of them; the rest are just for stepping back.
+  keep_last: 2
+  save_best: true
+  resume: auto
+
+logging:
+  output_root: output/runs
+  wandb:
+    enabled: false        # turn on per config, or with --override
+    entity: null          # the shared team, once it exists
+    project: wm811k-wafer-defects
+    mode: online          # 'offline' works without an account; sync later
+    tags: []

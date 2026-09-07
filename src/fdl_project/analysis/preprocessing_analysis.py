@@ -8,7 +8,7 @@ from time import perf_counter
 import numpy as np
 import pandas as pd
 
-from fdl_project.preprocessing import (
+from fdl_project.data.preprocessing import (
     WaferMapPreprocessor,
     decode_preprocessed_map,
     validate_wafer_map,

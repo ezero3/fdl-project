@@ -2,6 +2,8 @@
 data/MIR-WM811K/WM811K.pkl
 
 # Trained models and checkpoints
+# Per-epoch run checkpoints are large binaries; on Colab they live on Drive.
+trained-models/checkpoints/
 
 # trained-models/*
 # !trained-models/.gitkeep
@@ -48,3 +50,7 @@ Thumbs.db
 
 # Local Claude Code audit log
 .claude/audit.jsonl
+.claude/settings.local.json
+
+# Local planning scratch
+_plans/

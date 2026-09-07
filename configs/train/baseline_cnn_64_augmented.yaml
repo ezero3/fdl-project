@@ -1,0 +1,23 @@
+# The baseline CNN with dihedral-8 augmentation and CBAM attention.
+#
+# Two changes against baseline_cnn_64, so if you want to attribute a gain to
+# one of them, run them separately — this config is the combined arm.
+name: baseline-cnn-64-augmented
+
+data:
+  augmentation:
+    name: dihedral8
+    probability: 1.0
+
+model:
+  name: baseline_cnn
+  kwargs:
+    dropout: 0.2
+    attention: cbam
+
+scheduler:
+  name: cosine_with_warmup
+  interval: epoch
+  kwargs:
+    warmup_epochs: 2
+    min_lr_ratio: 0.01

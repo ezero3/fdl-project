@@ -8,7 +8,7 @@ from torch.nn import functional as F
 from torch.utils.data import Dataset, TensorDataset
 
 from fdl_project.constants import NUM_CLASSES
-from fdl_project.imbalance import (
+from fdl_project.data.imbalance import (
     DEFAULT_IMBALANCE_CONFIG,
     PRESET_IMBALANCE_CONFIGS,
     FocalLoss,
@@ -20,13 +20,15 @@ from fdl_project.imbalance import (
     create_imbalance_training_dataloader,
     imbalance_metadata,
 )
-from fdl_project.imbalance_experiment import (
+from fdl_project.analysis.imbalance_experiment import (
     ImbalanceExperimentConfig,
+    TrainingConfig,
     categorical_one_hot_collate,
     create_experiment_dataloader,
 )
-from fdl_project.models import BaselineCNN, count_trainable_parameters
-from fdl_project.training import TrainingConfig, fit_model, set_reproducible_seed
+from fdl_project.models.baseline_cnn import BaselineCNN, count_trainable_parameters
+from fdl_project.training.loop import fit_model
+from fdl_project.training.seed import seed_everything
 
 TRAIN_COUNTS = torch.tensor(
     [3006, 389, 3632, 6776, 2516, 104, 606, 835, 103199],
@@ -255,7 +257,7 @@ def test_baseline_cnn_has_fixed_nine_class_output() -> None:
 
 
 def test_tiny_fit_returns_best_state_and_complete_history() -> None:
-    set_reproducible_seed(86)
+    seed_everything(86)
     dataset = _categorical_dataset(samples_per_class=2)
     train_loader = create_experiment_dataloader(
         dataset,
@@ -282,7 +284,8 @@ def test_tiny_fit_returns_best_state_and_complete_history() -> None:
             minimum_epochs=1,
             early_stopping_patience=1,
             learning_rate=0.05,
-        ),
+        ).to_trainer_config(device="cpu"),
+        optimizer=torch.optim.AdamW(model.parameters(), lr=0.05),
     )
 
     assert 1 <= result.best_epoch <= 2

@@ -1,0 +1,41 @@
+# Pretrained ResNet18, fine-tuned rather than frozen.
+#
+# The encoder keeps training, just 100x slower than the randomly initialised
+# head: that ratio is what "built upon, not used as a feature extractor" means
+# in practice. 224x224 because ImageNet filters expect that scale.
+name: resnet18-224-finetune
+
+data:
+  preprocessing:
+    target_size: [224, 224]
+
+model:
+  name: resnet18
+  kwargs:
+    pretrained: true
+    dropout: 0.2
+
+optimizer:
+  name: adamw
+  kwargs:
+    lr: 1.0e-3            # the head
+    weight_decay: 1.0e-4
+  param_groups:
+    - name: encoder
+      pattern: "^encoder\\."
+      kwargs:
+        lr: 1.0e-5        # the pretrained backbone
+
+scheduler:
+  name: cosine_with_warmup
+  interval: epoch
+  kwargs:
+    warmup_epochs: 2
+    # A ratio, not an absolute floor, so the 100x separation between the two
+    # groups holds for the whole run.
+    min_lr_ratio: 0.01
+
+trainer:
+  # 224x224 is twelve times the pixels of 64x64, so the batch has to shrink to
+  # fit a Colab T4.
+  batch_size: 128
