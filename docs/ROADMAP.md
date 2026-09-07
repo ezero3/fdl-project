@@ -128,9 +128,9 @@ Three techniques we have not tried, all cheap:
 *Done when:* each is screened on validation against the current sampler, on the fixed test-bed model.
 
 ### 15. Handcrafted geometric features alongside the CNN
-Compute classical wafer-map descriptors — defect density per radial band, bounding-box geometry, and especially a **Radon transform**, which turns straight lines into peaks — and concatenate them with the CNN embedding before the classifier.
+Compute classical wafer-map descriptors and concatenate them with the CNN embedding before the classifier. The reference design is 59 features: **13 density** (defect density over 13 wafer regions), **40 Radon-based** (`skimage.transform.radon` projections, reduced by cubic interpolation), and **6 geometry** features of the largest connected defect region (area, perimeter, major/minor axis length, solidity, eccentricity).
 
-*Why:* this is open issue #7 (feature engineering), and there is a specific reason to expect a gain here: the Radon transform is a line detector, and `Scratch` — thin linear defects — is by far our worst class at ~0.32 F1. It also poses a real question for the report: does a CNN rediscover the spatial statistics that were hand-engineered for this task, or does explicit domain knowledge still add something?
+*Why:* this is open issue #7 (feature engineering), and there is a specific reason to expect a gain: the Radon transform is a line detector, and `Scratch` — thin linear defects — is by far our worst class at ~0.32 F1. It also poses a real question for the report: does a CNN rediscover the spatial statistics that were hand-engineered for this task, or does explicit domain knowledge still add something?
 *Done when:* three variants are compared on the fixed test-bed model — handcrafted features alone, CNN alone, and both concatenated.
 
 ---

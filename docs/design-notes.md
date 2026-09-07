@@ -178,3 +178,15 @@ Their per-class F1 for the baseline is worth reading even though the protocol di
 
 Note their `None` F1 is only 74.62, far below ours (0.9815), which is the clearest sign their evaluation distribution is rebalanced rather than natural. Read their numbers as a ranking of methods, not as a target to beat.
 
+## 13. What the public Kaggle notebooks actually contain
+
+Reviewed directly (46 notebooks listed on the dataset's Code tab), the ecosystem clusters into a handful of distinct ideas; most entries are forks of two or three originals.
+
+**The canonical notebook** (*WM-811k Wafermap*, ~715 upvotes) is not a deep-learning solution at all. It engineers **59 handcrafted features** — 13 density features over wafer regions, 40 Radon-transform projection features reduced by cubic interpolation, and 6 geometry features of the largest connected defect region (area, perimeter, major and minor axis length, solidity, eccentricity) — and classifies them with a One-vs-One SVM. That is the source of the feature design in roadmap item 15, and it is verified rather than assumed.
+
+**Important caveat:** its training target counts cover only **8 classes and about 19k samples** — it drops `none` entirely. So the most-copied notebook on this dataset solves an easier problem than ours, and its results are not comparable to nine-class macro-F1 on the natural distribution.
+
+Other distinct approaches present: plain Keras and PyTorch CNNs; a convolutional autoencoder used for minority-class augmentation; CNN-WDI; a ViT variant; MobileNetV2 and V3 lightweight models; ResNet-50 with ASVD; class-activation-map visualisation; attention fusion; image retrieval; wafer segmentation; and several generative attempts (DCGAN, WGAN-GP, conditional diffusion).
+
+Two things this tells us. The generative direction has been tried repeatedly here without producing a dominant result, which supports the decision to drop it. And a class-activation-map notebook exists, which is worth borrowing from for the qualitative error analysis in roadmap item 9.
+
