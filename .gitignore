@@ -55,7 +55,9 @@ Thumbs.db
 # Local planning scratch
 _plans/
 
-# Per-run training artifacts: predictions, confusion matrices and model
-# weights. Small result summaries (output/phase0/, output/phase2/results.csv)
-# are committed; these are not.
-output/runs/
+# Generated output. Files already tracked here (the analysis figures and
+# tables that docs/reports/*.md link to) stay tracked and keep showing their
+# diffs -- .gitignore only affects untracked paths. This stops new training
+# artifacts, checkpoints and sweep runs from being added by accident.
+# To commit a genuinely new analysis artifact: git add -f output/<path>
+output/
