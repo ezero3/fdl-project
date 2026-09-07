@@ -71,10 +71,26 @@ Two built by us, one pretrained.
 
 **Not a course requirement — a choice we made.** The brief only says the solution "cannot rely exclusively on" pretrained models and that the group "must develop and train a meaningful component", listing *"developing a model from scratch and comparing it with a pretrained solution"* as acceptable. One from-scratch model plus one fine-tuned pretrained model already satisfies that. The second own architecture is worth having because it makes the comparison a statement about design rather than about one lucky model — but if time runs short, it is the first thing here that can go.
 
-- **From scratch:** `baseline_cnn` (~157k parameters) and `wafer_resnet` (~2.8M), both ours. The second is a residual CNN — `configs/train/wafer_resnet_64.yaml`.
+- **From scratch — ours, named `*_style`.** Each is a scaled-down design in the spirit of a known family, trained from scratch. The suffix is what separates them from the torchvision entries: `resnet_style` is ours, `resnet18` is ImageNet weights.
 
-  Two things about it are fitted to this data rather than copied from a stock ResNet. Its **stem is a 3x3 stride-1 convolution with no max-pool**: a torchvision-style 7x7 stride-2 stem plus pooling drops 64x64 to 16x16 *before the first residual block*, and a one-die-wide `Scratch` or a small `Loc` is exactly what vanishes there. And `widths`/`blocks_per_stage` are config fields, so depth and width are tunable without touching the class.
-- **Pretrained:** MobileNetV3 or ResNet18, **fine-tuned or built upon — not used as a frozen feature extractor.** Train the whole network, but give the pretrained encoder a much smaller learning rate than the newly initialised head (10–100× smaller is the usual range). Freezing the encoder is also worth one run as a cheap, fast baseline — it trains in minutes and tells you how much the fine-tuning actually buys — but it is a comparison point, not the plan.
+  | config | model | parameters | what it tests |
+  |---|---|---|---|
+  | `baseline_cnn_64` | `baseline_cnn` | 157k | the floor; the instrument for screening non-model choices |
+  | `densenet_style_64` | `densenet_style` | 304k | feature reuse — cheapest way to add depth on a small dataset |
+  | `dilated_style_64` | `dilated_style` | 298k | context **without** downsampling |
+  | `inception_style_64` | `inception_style` | 799k | parallel kernel sizes for multi-scale defects |
+  | `resnet_style_64` | `resnet_style` | 2.8M | depth via residual connections |
+  | `vit_style_64` | `vit_style` | 2.7M | no convolutional prior — expected to lose |
+
+  Two of these have an argument specific to this data rather than a generic one:
+
+  **`dilated_style`** is the best-motivated of the set. Every other design widens its receptive field by downsampling, and downsampling is exactly what destroys a one-die-wide `Scratch`. Dilation buys the same context by spacing the kernel out: rates 1,2,4,8 cycled twice reach a **63-cell receptive field on a 64x64 map having downsampled not at all**. The rates cycle rather than climb, which is the standard fix for gridding artifacts.
+
+  **`vit_style`** is a deliberate negative control. A transformer trades the convolutional prior for data, and 121k wafers at 64x64 with 85% one class is not that regime. Run it anyway: "we measured a transformer and it underperformed, here is the curve" is a real finding, and it is the honest version of the comparison. It is also the one config with augmentation on by default, since it has no prior to fall back on.
+
+  `inception_style`, `dilated_style` and `densenet_style` all accept `attention: cbam`, so item 11's with/without comparison works on any of them. `vit_style` refuses it and says why — it is already an attention model.
+
+- **Pretrained:** `resnet18`, `resnet34`, `mobilenet_v3_small/large`, `efficientnet_b0`, `vit_b_16`, `vit_b_32`, `swin_t` — **fine-tuned or built upon, not used as a frozen feature extractor.** `vit_b_16_224_finetune` is the direct counterpart to our `vit_style`: same family, ImageNet pretraining instead of learning the visual prior from scratch. Train the whole network, but give the pretrained encoder a much smaller learning rate than the newly initialised head (10–100× smaller is the usual range). Freezing the encoder is also worth one run as a cheap, fast baseline — it trains in minutes and tells you how much the fine-tuning actually buys — but it is a comparison point, not the plan.
 - Use a **learning-rate schedule**; cosine annealing with a short warmup is a sensible default.
 - Pretrained backbones need **224×224 input** rather than 64×64, because their filters expect that scale. This is a config change, not new code.
 - **Run the input-representation comparison on the pretrained model.** Two arms: our default 3-channel one-hot, and the three states mapped to a grayscale-style image replicated to 3 channels with ImageNet mean/std normalization. Cheap, and it occasionally makes a large difference. The reason to bother: ImageNet filters were trained on natural photographs, and one-hot indicator channels look nothing like that distribution, so the pretrained weights may transfer poorly to them. The reason it is not the default: the grayscale arm reintroduces the false ordering that one-hot exists to remove (it implies a defect is "twice" a functional die), which is why we rejected single-channel input in the first place. Measure it, do not argue about it. Run it **only on the pretrained backbone** — a result here is about matching the pretraining distribution and will not transfer to our from-scratch models. Needs a small code change, not just config: `PreprocessingConfig` currently refuses to combine one-hot with any normalization and has no ImageNet strategy.

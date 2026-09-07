@@ -1,9 +1,9 @@
 # Our second from-scratch model: a residual CNN sized for 64x64 wafer maps.
 # ~2.8M parameters, against ~157k for the baseline CNN.
-name: wafer-resnet-64
+name: resnet-style-64
 
 model:
-  name: wafer_resnet
+  name: resnet_style
   kwargs:
     widths: [32, 64, 128, 256]
     blocks_per_stage: 2

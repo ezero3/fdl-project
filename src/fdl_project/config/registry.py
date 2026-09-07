@@ -34,6 +34,10 @@ def _lookup(table: dict[str, Any], name: str, *, kind: str) -> Any:
 
 # --------------------------------------------------------------------------
 # Models
+#
+# `*_style` names are our own scaled-down designs in the spirit of a known
+# family -- trained from scratch, not pretrained weights. The pretrained
+# torchvision backbones are the plain architecture names.
 # --------------------------------------------------------------------------
 
 
@@ -43,10 +47,34 @@ def _baseline_cnn(**kwargs: Any) -> nn.Module:
     return BaselineCNN(**kwargs)
 
 
-def _wafer_resnet(**kwargs: Any) -> nn.Module:
+def _resnet_style(**kwargs: Any) -> nn.Module:
     from fdl_project.models.wafer_resnet import WaferResNet
 
     return WaferResNet(**kwargs)
+
+
+def _inception_style(**kwargs: Any) -> nn.Module:
+    from fdl_project.models.inception import WaferInception
+
+    return WaferInception(**kwargs)
+
+
+def _dilated_style(**kwargs: Any) -> nn.Module:
+    from fdl_project.models.dilated import WaferDilatedCNN
+
+    return WaferDilatedCNN(**kwargs)
+
+
+def _densenet_style(**kwargs: Any) -> nn.Module:
+    from fdl_project.models.densenet import WaferDenseNet
+
+    return WaferDenseNet(**kwargs)
+
+
+def _vit_style(**kwargs: Any) -> nn.Module:
+    from fdl_project.models.vit import WaferViT
+
+    return WaferViT(**kwargs)
 
 
 def _pretrained(architecture: str) -> ModelBuilder:
@@ -60,12 +88,19 @@ def _pretrained(architecture: str) -> ModelBuilder:
 
 MODEL_REGISTRY: dict[str, ModelBuilder] = {
     "baseline_cnn": _baseline_cnn,
-    "wafer_resnet": _wafer_resnet,
+    "resnet_style": _resnet_style,
+    "inception_style": _inception_style,
+    "dilated_style": _dilated_style,
+    "densenet_style": _densenet_style,
+    "vit_style": _vit_style,
     "resnet18": _pretrained("resnet18"),
     "resnet34": _pretrained("resnet34"),
     "mobilenet_v3_small": _pretrained("mobilenet_v3_small"),
     "mobilenet_v3_large": _pretrained("mobilenet_v3_large"),
     "efficientnet_b0": _pretrained("efficientnet_b0"),
+    "vit_b_16": _pretrained("vit_b_16"),
+    "vit_b_32": _pretrained("vit_b_32"),
+    "swin_t": _pretrained("swin_t"),
 }
 
 

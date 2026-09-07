@@ -37,7 +37,14 @@ SUPPORTED_ARCHITECTURES: dict[str, str] = {
     "mobilenet_v3_small": "MobileNet_V3_Small_Weights",
     "mobilenet_v3_large": "MobileNet_V3_Large_Weights",
     "efficientnet_b0": "EfficientNet_B0_Weights",
+    "vit_b_16": "ViT_B_16_Weights",
+    "vit_b_32": "ViT_B_32_Weights",
+    "swin_t": "Swin_T_Weights",
 }
+
+#: Architectures with no spatial feature map to hang CBAM on. Their own
+#: attention is the point; ``models/wafer_vit.py`` explains the same for ours.
+TOKEN_ARCHITECTURES = frozenset({"vit_b_16", "vit_b_32", "swin_t"})
 
 
 def _feature_width(model: nn.Module, architecture: str) -> int:
@@ -45,6 +52,11 @@ def _feature_width(model: nn.Module, architecture: str) -> int:
 
     if architecture.startswith("resnet"):
         return model.fc.in_features
+    if architecture.startswith("vit_"):
+        # torchvision ViTs keep their classifier in a `heads` Sequential.
+        return model.heads.head.in_features
+    if architecture == "swin_t":
+        return model.head.in_features
     # mobilenet_v3_* and efficientnet_b0 both end in a Sequential classifier
     # whose first Linear carries the feature width.
     linear_layers = [
@@ -66,6 +78,18 @@ def _split_backbone(
     """
 
     in_features = _feature_width(model, architecture)
+    if architecture in TOKEN_ARCHITECTURES:
+        if keep_spatial:
+            raise ValueError(
+                f"{architecture!r} produces tokens, not a spatial feature map, so "
+                "a convolutional attention block cannot be attached. It is "
+                "already an attention model."
+            )
+        if architecture.startswith("vit_"):
+            model.heads = nn.Identity()
+        else:
+            model.head = nn.Identity()
+        return model, in_features
     if architecture.startswith("resnet"):
         if keep_spatial:
             # children()[:-2] drops avgpool and fc, keeping conv1..layer4.

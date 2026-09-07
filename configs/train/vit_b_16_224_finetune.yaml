@@ -1,0 +1,36 @@
+# Pretrained ViT-B/16, fine-tuned. The counterpart to our own wafer_vit:
+# same family, but with ImageNet pretraining instead of learning the visual
+# prior from 121k wafer maps.
+name: vit-b-16-224-finetune
+
+data:
+  preprocessing:
+    target_size: [224, 224]   # the patch grid and positional table expect this
+
+model:
+  name: vit_b_16
+  kwargs:
+    pretrained: true
+    dropout: 0.1
+
+optimizer:
+  name: adamw
+  kwargs:
+    lr: 1.0e-3            # the head
+    weight_decay: 0.05
+  param_groups:
+    - name: encoder
+      pattern: "^encoder\\."
+      kwargs:
+        lr: 1.0e-5        # the pretrained transformer
+
+scheduler:
+  name: cosine_with_warmup
+  interval: epoch
+  kwargs:
+    warmup_epochs: 3
+    min_lr_ratio: 0.01
+
+trainer:
+  # ViT-B is ~86M parameters at 224x224; this is what fits a T4.
+  batch_size: 32
