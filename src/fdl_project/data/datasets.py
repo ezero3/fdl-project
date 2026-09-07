@@ -282,9 +282,10 @@ class WM811KDataset(Dataset[tuple[Tensor, Tensor, Tensor]]):
         if self.augmentation is not None:
             # The class index lets a policy augment rare classes more heavily.
             image = self.augmentation(image, int(self.target_indices[position]))
-        target = torch.tensor(int(self.target_indices[position]), dtype=torch.long)
-        source_index = torch.tensor(row_index, dtype=torch.long)
-        return image, target, source_index
+        # Plain ints, not scalar tensors: the default collator builds one
+        # tensor per batch either way, so two allocations per sample are pure
+        # overhead. The batch contract is unchanged.
+        return image, int(self.target_indices[position]), row_index
 
 
 def create_split_dataset(
@@ -315,6 +316,7 @@ def create_dataloader(
     shuffle: bool | None = None,
     num_workers: int = 0,
     pin_memory: bool = False,
+    prefetch_factor: int = 2,
     seed: int = 86,
 ) -> DataLoader[tuple[Tensor, Tensor, Tensor]]:
     """Create a split-safe DataLoader with deterministic train shuffling."""
@@ -349,6 +351,9 @@ def create_dataloader(
         pin_memory=pin_memory,
         drop_last=False,
         persistent_workers=num_workers > 0,
+        # Batches held ready per worker. More smooths out variable per-item
+        # cost but costs RAM and /dev/shm; it cannot fix a throughput deficit.
+        **({} if num_workers == 0 else {"prefetch_factor": prefetch_factor}),
         generator=generator,
         worker_init_fn=seed_worker if num_workers > 0 else None,
     )

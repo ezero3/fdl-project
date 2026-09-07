@@ -281,3 +281,15 @@ def test_num_workers_still_rejects_nonsense() -> None:
 
     with pytest.raises(ValueError, match="num_workers"):
         DataConfig(num_workers=-1)
+
+
+def test_prefetch_factor_is_configurable_and_validated() -> None:
+    """Batches held ready per worker. More smooths variable per-item cost but
+    costs RAM and /dev/shm; it cannot fix a throughput deficit."""
+
+    from fdl_project.config.schema import DataConfig
+
+    assert DataConfig().prefetch_factor == 2
+    assert DataConfig(prefetch_factor=4).prefetch_factor == 4
+    with pytest.raises(ValueError, match="prefetch_factor"):
+        DataConfig(prefetch_factor=0)

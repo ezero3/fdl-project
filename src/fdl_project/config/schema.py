@@ -113,6 +113,7 @@ class DataConfig:
     split_directory: Path = Path("data/splits")
     num_workers: int | str = "auto"
     pin_memory: bool = False
+    prefetch_factor: int = 2
     cache: bool | str = "auto"
     preprocessing: PreprocessingConfig = PreprocessingConfig()
     augmentation: AugmentationConfig = AugmentationConfig()
@@ -131,6 +132,7 @@ class DataConfig:
         _require_non_negative_integer(self.num_workers, "data.num_workers")
         if not isinstance(self.pin_memory, bool):
             raise ValueError("data.pin_memory must be a boolean.")
+        _require_positive_integer(self.prefetch_factor, "data.prefetch_factor")
         # Modes rather than a boolean: what to cache depends on the machine
         # and the geometry. Letterboxed maps cost 0.6 GB at 64x64 but 7.8 GB
         # at 224x224, which is fine on a 51 GB VM and not on a 12 GB one.

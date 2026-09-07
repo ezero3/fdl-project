@@ -168,12 +168,14 @@ def build_dataloaders(
         seed=config.seed,
         num_workers=config.data.num_workers,
         pin_memory=config.data.pin_memory,
+        prefetch_factor=config.data.prefetch_factor,
     )
     validation_loader = create_dataloader(
         validation_dataset,
         batch_size=config.trainer.batch_size,
         num_workers=config.data.num_workers,
         pin_memory=config.data.pin_memory,
+        prefetch_factor=config.data.prefetch_factor,
         seed=config.seed,
     )
     return train_loader, validation_loader

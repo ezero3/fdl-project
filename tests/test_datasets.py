@@ -83,9 +83,12 @@ def test_dataset_returns_preprocessed_image_target_and_source_index() -> None:
     image, target, row_index = dataset[1]
     assert image.shape == (3, 8, 8)
     assert image.dtype == torch.float32
-    assert target.dtype == torch.long
-    assert target.item() == CLASS_TO_INDEX[CLASS_NAMES[2]]
-    assert row_index.item() == 30
+    # Labels and indices come back as plain ints: the collator builds one
+    # tensor per batch either way, so per-sample tensors are pure overhead.
+    assert isinstance(target, int)
+    assert isinstance(row_index, int)
+    assert target == CLASS_TO_INDEX[CLASS_NAMES[2]]
+    assert row_index == 30
 
 
 def test_supervised_dataset_rejects_unlabeled_rows() -> None:
@@ -149,8 +152,7 @@ def test_caching_yields_identical_tensors(tmp_path) -> None:
         expected = plain[position]
         actual = cached[position]
         assert torch.equal(expected[0], actual[0])
-        assert torch.equal(expected[1], actual[1])
-        assert torch.equal(expected[2], actual[2])
+        assert expected[1:] == actual[1:]
 
 
 def test_caching_releases_the_source_table(tmp_path) -> None:
@@ -237,3 +239,20 @@ def test_cache_is_one_contiguous_tensor_not_a_list(tmp_path) -> None:
 
     assert isinstance(dataset.cached_maps, torch.Tensor)
     assert dataset.cached_maps.ndim == 3
+
+
+def test_collated_batches_still_carry_tensors(tmp_path) -> None:
+    """__getitem__ returns ints, but the DataLoader contract is unchanged:
+    batches are (inputs, targets, row_indices) with every element a tensor."""
+
+    frame = _toy_dataframe()
+    np.save(tmp_path / "validation_indices.npy", frame.index.to_numpy())
+    dataset = create_split_dataset(frame, tmp_path, "validation")
+    loader = create_dataloader(dataset, batch_size=4)
+
+    inputs, targets, row_indices = next(iter(loader))
+
+    assert isinstance(inputs, torch.Tensor) and inputs.dtype == torch.float32
+    assert isinstance(targets, torch.Tensor) and targets.dtype == torch.int64
+    assert isinstance(row_indices, torch.Tensor) and row_indices.dtype == torch.int64
+    assert len(targets) == len(inputs) == len(row_indices)

@@ -324,6 +324,7 @@ def create_imbalance_training_dataloader(
     *,
     batch_size: int,
     config: ImbalanceConfig = DEFAULT_IMBALANCE_CONFIG,
+    prefetch_factor: int = 2,
     seed: int = 86,
     num_workers: int = 0,
     pin_memory: bool = False,
@@ -362,6 +363,8 @@ def create_imbalance_training_dataloader(
         pin_memory=pin_memory,
         drop_last=False,
         persistent_workers=num_workers > 0,
+        # Batches held ready per worker; see create_dataloader.
+        **({} if num_workers == 0 else {"prefetch_factor": prefetch_factor}),
         generator=generator if sampler is None else None,
         worker_init_fn=seed_worker if num_workers > 0 else None,
     )
