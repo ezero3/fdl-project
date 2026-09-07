@@ -1,0 +1,18 @@
+# Control for the 2.5 series: baseline_v2 + rotation, imbalance unchanged.
+# Every other arm here differs from this by the loss alone, so a difference
+# is attributable. Comparing against the old baseline_cnn numbers would not
+# be: both the model and the augmentation changed since.
+name: v25-control
+
+model:
+  name: baseline_v2
+  kwargs: {pooled_size: 1, block_dropout: 0.1, dropout: 0.4}
+
+data:
+  augmentation:
+    name: rotation
+    probability: 0.5      # resamples, so half the samples stay clean
+    kwargs: {degrees: 180.0}
+
+imbalance:
+  preset: inverse_sqrt_sampler

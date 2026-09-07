@@ -1,0 +1,20 @@
+# Focal at gamma 1.0 plus the sampler: the least-cancelling combination of
+# the four, if the interference argument in v25_focal_g2_sampler is right.
+name: v25-focal-g1-sampler
+
+model:
+  name: baseline_v2
+  kwargs: {pooled_size: 1, block_dropout: 0.1, dropout: 0.4}
+
+data:
+  augmentation:
+    name: rotation
+    probability: 0.5
+    kwargs: {degrees: 180.0}
+
+imbalance:
+  name: focal_sampler_g1
+  loss: focal
+  focal_gamma: 1.0
+  sampling: weighted
+  sampling_weighting: inverse_sqrt

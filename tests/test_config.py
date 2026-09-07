@@ -293,3 +293,38 @@ def test_prefetch_factor_is_configurable_and_validated() -> None:
     assert DataConfig(prefetch_factor=4).prefetch_factor == 4
     with pytest.raises(ValueError, match="prefetch_factor"):
         DataConfig(prefetch_factor=0)
+
+
+def test_an_experiment_can_replace_the_default_imbalance_preset(tmp_path) -> None:
+    """`imbalance` takes either a preset or a spelled-out strategy, never
+    both. Merging it key-by-key would leave the default preset underneath an
+    explicit block, making explicit strategies unreachable from any config
+    that inherits defaults -- which is every config in configs/train/."""
+
+    from fdl_project.config.loader import deep_merge
+
+    merged = deep_merge(
+        {"imbalance": {"preset": "inverse_sqrt_sampler"}, "trainer": {"amp": True}},
+        {"imbalance": {"name": "focal_sampler", "loss": "focal"}},
+    )
+
+    assert merged["imbalance"] == {"name": "focal_sampler", "loss": "focal"}
+    assert merged["trainer"] == {"amp": True}  # other sections still merge
+
+
+def test_focal_loss_and_the_sampler_can_be_combined() -> None:
+    """Two different mechanisms -- one shapes the loss, the other what the
+    model sees -- so a config may ask for both."""
+
+    from fdl_project.data.imbalance import ImbalanceConfig
+
+    combined = ImbalanceConfig(
+        name="focal_sampler",
+        loss="focal",
+        focal_gamma=1.0,
+        sampling="weighted",
+        sampling_weighting="inverse_sqrt",
+    )
+
+    assert combined.loss == "focal"
+    assert combined.sampling == "weighted"

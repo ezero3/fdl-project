@@ -1,0 +1,24 @@
+# Focal loss alone, no sampler. gamma 2.0 is the shipped default.
+#
+# Focal down-weights examples the model already gets right, by (1-p)^gamma.
+# That targets easy-vs-hard imbalance, not class-frequency imbalance -- which
+# is the axis that actually hurts here, so this is the weaker of the two
+# mechanisms on paper. It is measured because rotation changed the regime:
+# the model no longer memorises the training set, so loss shaping may matter
+# more than it did against an overfitting control.
+name: v25-focal-g2
+
+model:
+  name: baseline_v2
+  kwargs: {pooled_size: 1, block_dropout: 0.1, dropout: 0.4}
+
+data:
+  augmentation:
+    name: rotation
+    probability: 0.5
+    kwargs: {degrees: 180.0}
+
+imbalance:
+  name: focal_only_g2
+  loss: focal
+  focal_gamma: 2.0

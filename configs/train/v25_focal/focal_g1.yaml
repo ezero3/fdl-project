@@ -1,0 +1,22 @@
+# Focal loss alone at gamma 1.0: milder suppression of easy examples.
+#
+# Lower gamma is the interesting direction rather than higher. The concern
+# with focal here is that it suppresses gradient from examples the model has
+# learned -- and with rare classes that is a small set to begin with. gamma 1
+# keeps more of that signal while still favouring hard examples.
+name: v25-focal-g1
+
+model:
+  name: baseline_v2
+  kwargs: {pooled_size: 1, block_dropout: 0.1, dropout: 0.4}
+
+data:
+  augmentation:
+    name: rotation
+    probability: 0.5
+    kwargs: {degrees: 180.0}
+
+imbalance:
+  name: focal_only_g1
+  loss: focal
+  focal_gamma: 1.0

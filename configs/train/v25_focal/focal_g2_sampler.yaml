@@ -1,0 +1,25 @@
+# Focal loss AND the inverse-sqrt sampler together.
+#
+# The mechanism to watch: the sampler makes rare classes common within a
+# batch, and focal then down-weights examples once the model gets them right
+# -- so focal's suppression lands hardest on exactly what the sampler was
+# promoting. They can partly cancel rather than compound. That is the
+# hypothesis this arm tests, and why the control matters.
+name: v25-focal-g2-sampler
+
+model:
+  name: baseline_v2
+  kwargs: {pooled_size: 1, block_dropout: 0.1, dropout: 0.4}
+
+data:
+  augmentation:
+    name: rotation
+    probability: 0.5
+    kwargs: {degrees: 180.0}
+
+imbalance:
+  name: focal_sampler_g2
+  loss: focal
+  focal_gamma: 2.0
+  sampling: weighted
+  sampling_weighting: inverse_sqrt

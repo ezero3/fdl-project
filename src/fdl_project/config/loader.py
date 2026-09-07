@@ -47,6 +47,14 @@ def _load_yaml(path: Path) -> dict[str, Any]:
     return payload
 
 
+#: Sections an experiment file replaces wholesale rather than merging into.
+#: ``imbalance`` accepts either ``preset:`` or a spelled-out strategy, never
+#: both -- so key-by-key merging would leave the default preset sitting
+#: underneath an explicit block and make explicit strategies unreachable from
+#: any config that inherits defaults.
+REPLACED_SECTIONS = frozenset({"imbalance"})
+
+
 def deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
     """Merge ``override`` into ``base`` recursively, without mutating either."""
 
@@ -54,6 +62,7 @@ def deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]
     for key, value in override.items():
         if (
             key in merged
+            and key not in REPLACED_SECTIONS
             and isinstance(merged[key], dict)
             and isinstance(value, dict)
         ):
