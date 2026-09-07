@@ -58,6 +58,7 @@ class AugmentationConfig:
 
     name: str | None = None
     probability: float = 1.0
+    kwargs: MappingProxyType = field(default_factory=lambda: MappingProxyType({}))
 
     def __post_init__(self) -> None:
         name = self.name
@@ -66,6 +67,11 @@ class AugmentationConfig:
         if name is not None and not isinstance(name, str):
             raise ValueError("data.augmentation.name must be a string or null.")
         object.__setattr__(self, "name", name)
+        object.__setattr__(
+            self,
+            "kwargs",
+            _freeze_kwargs(self.kwargs, field_name="data.augmentation.kwargs"),
+        )
         if (
             isinstance(self.probability, bool)
             or not isinstance(self.probability, (int, float))
@@ -78,7 +84,11 @@ class AugmentationConfig:
         return self.name is not None
 
     def to_dict(self) -> dict[str, Any]:
-        return {"name": self.name, "probability": float(self.probability)}
+        return {
+            "name": self.name,
+            "probability": float(self.probability),
+            "kwargs": dict(self.kwargs),
+        }
 
 
 @dataclass(frozen=True)

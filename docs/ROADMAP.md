@@ -125,7 +125,19 @@ Look at what the models get wrong, not only how much. Inspect the most-confused 
 ### 10. Data augmentation
 Use exact symmetries — the 4 rotations by 90° and their mirrors, or a subgroup of them. These are index permutations, so they introduce no interpolation and no invalid pixel values, and they preserve every class label.
 
-**Do not use free-angle rotation** (destroys thin scratch patterns) and **be careful with translation**: shifting a localized defect toward the wafer edge can genuinely turn a `Loc` into an `Edge-Loc` while keeping the old label.
+**Be careful with translation**: shifting a localized defect toward the wafer edge can genuinely turn a `Loc` into an `Edge-Loc` while keeping the old label. That one is not available from config at all.
+
+**Free-angle rotation was measured, and the original warning here was wrong.** This item used to say it "destroys thin scratch patterns". That is true if you rotate a *native-resolution* wafer before downscaling; it is not what happens, because augmentation runs on the already-preprocessed 64x64 tensor. Measured there, on the real training split with nearest-neighbour resampling:
+
+| class | defective dies | blobs before | blobs after 30 deg | ratio |
+|---|---|---|---|---|
+| Center | 714 | 41 | 51 | 1.24x |
+| Edge-Ring | 426 | 59 | 61 | 1.03x |
+| Loc | 407 | 45 | 50 | 1.11x |
+| **Scratch** | **284** | **49** | **54** | **1.10x** |
+| Random | 1428 | 17 | 30 | 1.76x |
+
+Defective-die count is preserved (median -0.6% at 30 degrees) and **no wafer in any class lost its pattern at any angle**. `Scratch` fragments no more than `Loc` or `Donut`, and far less than `Random`. So `rotation` is offered as an option — but it is the only one that resamples, so it is not the default, and the three exact-permutation subgroups remain the safe baseline.
 
 *Why:* the minority classes are oversampled with replacement today, so the model sees the same handful of images repeatedly. Augmentation turns each repeat into a different view — the two techniques compound.
 *Done when:* augmentation applies to training only, validation and test are provably untouched, and a fixed seed reproduces the same views. ✅
@@ -141,13 +153,16 @@ data:
 
 Three named options, all closed subgroups of D4 — so an ablation between them compares *structure*, not three different amounts of noise:
 
-| name | transforms | group |
-|---|---|---|
-| `dihedral8` | all 8 | D4 |
-| `rotations` | 4 rotations by 90° | C4 |
-| `flips` | identity, horizontal, vertical, both | Klein four-group |
+| name | transforms | group | resamples? |
+|---|---|---|---|
+| `dihedral8` | all 8 | D4 | no |
+| `rotations` | 4 rotations by 90° | C4 | no |
+| `flips` | identity, horizontal, vertical, both | Klein four-group | no |
+| `rotation` | free angle, `kwargs: {degrees: 180.0}` | — | **yes** |
 
 Horizontal and vertical flips are not a separate mechanism — they are elements of D4, so `dihedral8` already includes them. `flips` exists to isolate them.
+
+**Considered and rejected**, so nobody has to re-derive it: `RandomZoomOut` shrinks the wafer inside a border, an appearance that never occurs at validation or test — a train/serve mismatch with no upside. `RandomAffine` without `translate` reduces to rotation plus scale plus shear; scaling up crops the wafer edge and destroys what `Edge-Ring` and `Edge-Loc` mean, scaling down is the zoom-out problem again, and shear turns a circular wafer into an ellipse, which no physical process produces. `RandomRotation` gives the one useful component with nothing attached, which is why `rotation` is the only resampling option offered.
 
 `WM811KDataset` **raises** if augmentation is passed with a validation or test split, so "provably untouched" is enforced rather than remembered. Views are drawn from torch's seeded RNG, which `seed_worker` re-seeds per dataloader worker. Free-angle rotation and translation are not reachable from config at all — the registry has one entry.
 

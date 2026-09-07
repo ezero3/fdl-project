@@ -10,6 +10,7 @@ from torch import nn
 from fdl_project.data.augmentation import (
     NUM_DIHEDRAL_TRANSFORMS,
     TRANSFORM_SUBSETS,
+    RotationAugmentation,
     DihedralAugmentation,
     apply_dihedral,
     available_augmentations,
@@ -22,13 +23,17 @@ from fdl_project.training.seed import seed_everything
 
 
 def _wafer() -> torch.Tensor:
-    """A one-hot map with an asymmetric mark, so every symmetry is distinct."""
+    """A genuinely one-hot map with an asymmetric mark.
 
+    Exactly one channel is set per cell -- channel 1 (functional die)
+    everywhere except the three defect cells, which are channel 2.
+    """
+
+    states = torch.ones((8, 8), dtype=torch.long)
+    for row, column in ((1, 5), (2, 5), (1, 6)):
+        states[row, column] = 2
     tensor = torch.zeros((3, 8, 8))
-    tensor[1] = 1.0
-    tensor[2, 1, 5] = 1.0
-    tensor[2, 2, 5] = 1.0
-    tensor[2, 1, 6] = 1.0
+    tensor.scatter_(0, states.unsqueeze(0), 1.0)
     return tensor
 
 
@@ -132,12 +137,74 @@ def test_invalid_probabilities_are_rejected(probability: object) -> None:
 
 
 def test_the_registry_reports_and_validates_names() -> None:
-    assert set(available_augmentations()) == {"dihedral8", "rotations", "flips"}
+    assert set(available_augmentations()) == {
+        "dihedral8",
+        "rotations",
+        "flips",
+        "rotation",
+    }
     # off unless a config asks for it
     assert build_augmentation(None) is None
     assert isinstance(build_augmentation("dihedral8"), DihedralAugmentation)
     with pytest.raises(KeyError, match="dihedral8"):
         build_augmentation("rotate_freely")
+
+
+def test_rotation_keeps_the_encoding_exactly_one_hot() -> None:
+    """Nearest neighbour copies whole cells, so no fractional state appears.
+
+    The corners a rotation exposes are filled with the background channel --
+    filling every channel with zero would produce a cell in no state at all.
+    """
+
+    seed_everything(86)
+    rotated = RotationAugmentation(degrees=45.0)(_wafer())
+
+    assert torch.equal(rotated.sum(dim=0), torch.ones(8, 8))
+    assert set(rotated.unique().tolist()) <= {0.0, 1.0}
+    # exposed corners become background, never a die
+    assert rotated[0, 0, 0] == 1.0
+
+
+def test_rotation_preserves_the_defect_count() -> None:
+    """Measured on the real split: median change is under 1% and no wafer
+    loses its pattern. See docs/ROADMAP.md item 10."""
+
+    seed_everything(86)
+    wafer = _wafer()
+    augmentation = RotationAugmentation(degrees=180.0)
+    before = int(wafer[2].sum())
+    counts = [int(augmentation(wafer)[2].sum()) for _ in range(50)]
+
+    assert all(count > 0 for count in counts)
+    assert abs(np.median(counts) - before) <= 1
+
+
+def test_rotation_is_reproducible_and_varies() -> None:
+    augmentation = RotationAugmentation()
+    wafer = _wafer()
+
+    seed_everything(86)
+    first = [augmentation(wafer) for _ in range(8)]
+    seed_everything(86)
+    second = [augmentation(wafer) for _ in range(8)]
+
+    assert all(torch.equal(a, b) for a, b in zip(first, second, strict=True))
+    assert len({view.numpy().tobytes() for view in first}) > 1
+
+
+@pytest.mark.parametrize("degrees", [0, -5, 181, True])
+def test_invalid_rotation_ranges_are_rejected(degrees: object) -> None:
+    with pytest.raises(ValueError, match="degrees"):
+        RotationAugmentation(degrees=degrees)  # type: ignore[arg-type]
+
+
+def test_rotation_is_reachable_from_the_registry() -> None:
+    augmentation = build_augmentation("rotation", degrees=90.0)
+
+    assert isinstance(augmentation, RotationAugmentation)
+    assert augmentation.degrees == 90.0
+    assert "rotation" in available_augmentations()
 
 
 def test_attention_preserves_shape_and_is_learnable() -> None:

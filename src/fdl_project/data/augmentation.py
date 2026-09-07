@@ -111,9 +111,73 @@ class DihedralAugmentation:
         return apply_dihedral(tensor, self.transforms[choice])
 
 
-def build_augmentation(
-    name: str | None, **kwargs: float
-) -> DihedralAugmentation | None:
+@dataclass(frozen=True)
+class RotationAugmentation:
+    """Rotate by a free angle, nearest-neighbour, on the one-hot tensor.
+
+    Unlike the dihedral group this is *not* an index permutation: the output
+    grid does not line up with the input grid, so cells are resampled. Nearest
+    neighbour keeps every output cell a copy of some input cell, so the one-hot
+    encoding stays exactly one-hot and no fractional state appears -- but a
+    thin structure can still be thinned, thickened or broken by the resampling.
+
+    Whether that matters is a measured question, not an assumed one; see
+    `docs/reports/` for what it does to `Scratch`.
+
+    ``fill`` sets the corners the rotation exposes. It defaults to the
+    background channel, which is the only valid one-hot for "no die here".
+    """
+
+    degrees: float = 180.0
+    probability: float = 1.0
+
+    def __post_init__(self) -> None:
+        if (
+            isinstance(self.degrees, bool)
+            or not isinstance(self.degrees, (int, float))
+            or not 0.0 < self.degrees <= 180.0
+        ):
+            raise ValueError("rotation degrees must lie in (0, 180].")
+        if (
+            isinstance(self.probability, bool)
+            or not isinstance(self.probability, (int, float))
+            or not 0.0 <= self.probability <= 1.0
+        ):
+            raise ValueError("augmentation probability must lie in [0, 1].")
+
+    def __call__(self, tensor: Tensor) -> Tensor:
+        from torchvision.transforms import InterpolationMode
+        from torchvision.transforms.v2 import functional as transforms_functional
+
+        if self.probability < 1.0 and float(torch.rand(())) >= self.probability:
+            return tensor
+        angle = float(torch.empty(()).uniform_(-self.degrees, self.degrees))
+        # One-hot channel 0 is "no die", so filling it is the only encoding of
+        # the empty corners a rotation exposes. Filling every channel with 0
+        # would produce a cell belonging to no state at all.
+        fill = [1.0] + [0.0] * (tensor.shape[0] - 1)
+        return transforms_functional.rotate(
+            tensor,
+            angle,
+            interpolation=InterpolationMode.NEAREST,
+            fill=fill,
+        )
+
+
+def _dihedral_factory(name: str):
+    def build(**kwargs: float) -> DihedralAugmentation:
+        return DihedralAugmentation(transforms=TRANSFORM_SUBSETS[name], **kwargs)
+
+    return build
+
+
+#: Name -> factory. Augmentation is train-only; see WM811KDataset.
+AUGMENTATION_REGISTRY = {
+    name: _dihedral_factory(name) for name in TRANSFORM_SUBSETS
+} | {"rotation": RotationAugmentation}
+
+
+def build_augmentation(name: str | None, **kwargs: float):
     """Build a configured augmentation, or ``None`` when disabled.
 
     Augmentation is off unless a config names one, and is train-only -- see
@@ -123,14 +187,14 @@ def build_augmentation(
     if name is None:
         return None
     try:
-        transforms = TRANSFORM_SUBSETS[name]
+        factory = AUGMENTATION_REGISTRY[name]
     except KeyError:
-        available = ", ".join(sorted(TRANSFORM_SUBSETS))
+        available = ", ".join(sorted(AUGMENTATION_REGISTRY))
         raise KeyError(
             f"Unknown augmentation {name!r}. Available: {available}."
         ) from None
-    return DihedralAugmentation(transforms=transforms, **kwargs)
+    return factory(**kwargs)
 
 
 def available_augmentations() -> tuple[str, ...]:
-    return tuple(sorted(TRANSFORM_SUBSETS))
+    return tuple(sorted(AUGMENTATION_REGISTRY))
