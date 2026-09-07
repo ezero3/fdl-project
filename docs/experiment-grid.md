@@ -47,14 +47,14 @@ where nothing resamples.
 | `inception_style` | | | | |
 | `vit_style` | | | | |
 | `resnet_style` | | | | |
-| `resnet18` | | | | |
-| `resnet34` | | | | |
-| `mobilenet_v3_small` | | | | |
-| `mobilenet_v3_large` | | | | |
-| `efficientnet_b0` | | | | |
-| `vit_b_16` | | | | |
-| `vit_b_32` | | | | |
-| `swin_t` | | | | |
+| `resnet18` | | ✗ | | |
+| `resnet34` | | ✗ | | |
+| `mobilenet_v3_small` | | ✗ | | |
+| `mobilenet_v3_large` | | ✗ | | |
+| `efficientnet_b0` | | ✗ | | |
+| `vit_b_16` | | ✗ | | |
+| `vit_b_32` | | ✗ | | |
+| `swin_t` | | ✗ | | |
 
 `dihedral8` = all 8 square symmetries, exact index permutations — always applied
 (`probability: 1.0`), since it is exact and free. `rotation` = free angle, nearest-neighbour,
@@ -135,20 +135,20 @@ combination raises.
 
 | model | one_hot ▪ | single_channel | grayscale_rgb | grayscale_rgb + imagenet |
 |---|---|---|---|---|
-| `baseline_cnn` | | | | — |
-| `dilated_style` | | | | — |
-| `densenet_style` | | | | — |
-| `inception_style` | | | | — |
-| `vit_style` | | | | — |
-| `resnet_style` | | | | — |
-| `resnet18` | | | | |
-| `resnet34` | | | | |
-| `mobilenet_v3_small` | | | | |
-| `mobilenet_v3_large` | | | | |
-| `efficientnet_b0` | | | | |
-| `vit_b_16` | | | | |
-| `vit_b_32` | | | | |
-| `swin_t` | | | | |
+| `baseline_cnn` | | ✗ | | — |
+| `dilated_style` | | ✗ | | — |
+| `densenet_style` | | ✗ | | — |
+| `inception_style` | | ✗ | | — |
+| `vit_style` | | ✗ | | — |
+| `resnet_style` | | ✗ | | — |
+| `resnet18` | | ✗ | | |
+| `resnet34` | | ✗ | | |
+| `mobilenet_v3_small` | | ✗ | | |
+| `mobilenet_v3_large` | | ✗ | | |
+| `efficientnet_b0` | | ✗ | | |
+| `vit_b_16` | | ✗ | | |
+| `vit_b_32` | | ✗ | | |
+| `swin_t` | | ✗ | | |
 
 `single_channel` maps the three states to 0.0 / 0.5 / 1.0. It was rejected on principle — it
 implies a defect is "twice" a functional die — but never measured, so it is a legitimate
@@ -156,6 +156,11 @@ one-run ablation on any model.
 
 `grayscale_rgb` maps the three states to 0.0/0.5/1.0 replicated across RGB;
 `+ imagenet` then applies torchvision's ImageNet mean/std. **Implemented.**
+
+`single_channel` is marked `✗` because **no model accepts it**: every architecture here
+hard-requires 3 input channels and raises on 1. Running that ablation needs a model change,
+and `grayscale_rgb` already asks the same question (does the false ordering hurt?) in a
+shape the models accept — so use that instead.
 
 The ImageNet arm is marked `—` for our models on purpose: the question it asks is whether
 matching a *pretraining* distribution helps, and there is no pretraining to match when
@@ -214,8 +219,8 @@ Fitted on validation, reused unchanged for the single test evaluation.
 | `inception_style` | | | | |
 | `vit_style` | | | | |
 | `resnet_style` | | | | |
-| `resnet18` | | | | |
-| `vit_b_16` | | | | |
+| `resnet18` | | ✗ | | |
+| `vit_b_16` | | ✗ | | |
 
 Indicative, on a 6-epoch undertrained baseline: 0.6130 → +TTA 0.6190 → +thresholds 0.6614.
 Expect the threshold gain to shrink on a converged model.
