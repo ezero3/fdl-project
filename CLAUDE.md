@@ -36,14 +36,30 @@ These are enforced in code and by specs; violating them silently corrupts cross-
 
 ## Architecture
 
-`src/fdl_project/` is an installed package (hatchling, `packages = ["src/fdl_project"]`) whose public API is re-exported from `__init__.py` — import as `from fdl_project import evaluate_model`, never by relative path from a notebook.
-
-The shared-infrastructure layers:
+`src/fdl_project/` is an installed package (hatchling, `packages = ["src/fdl_project"]`) whose public API is re-exported from `__init__.py` — import as `from fdl_project import evaluate_model`, never by relative path from a notebook. It is split by component:
 
 - `constants.py` — the frozen class encoding plus encode/decode/validate helpers. Everything else depends on it.
-- `evaluation.py` — architecture-independent evaluation. `collect_predictions` (model.eval + `torch.inference_mode`, sample-weighted mean loss, CPU collection) → `evaluate_predictions` (metrics, per-class table, absolute and row-normalized confusion matrices, always full nine-class shape even for unpredicted classes) → `evaluate_model` (both) → `save_evaluation_results` (writes `metrics.json`, `per_class_metrics.csv`, `predictions.csv`, `confusion_matrix.png`, `confusion_matrix_normalized.png` under `output/<root>/<run_name>/`, refusing to overwrite without `overwrite=True`).
+- `config/` — `schema.py` (frozen dataclasses, one per config section, validated in `__post_init__`), `loader.py` (YAML deep-merged over `configs/train/defaults.yaml`; **unknown keys raise**), `registry.py` (name → builder tables for models, optimizers, schedules). No Hydra — considered and rejected in `docs/design-notes.md` §12.
+- `data/` — `datasets.py`, `preprocessing.py`, `imbalance.py`.
+- `models/` — `baseline_cnn.py` and `pretrained.py`. Pretrained backbones expose exactly `encoder` and `head` so config regexes like `^encoder\.` stay stable across architectures.
+- `training/` — `seed.py`, `optim.py`, `checkpoint.py`, `callbacks.py`, `loop.py`, plus `runner.py`/`inference.py` which wire a config into a complete run.
+- `evaluation/` — `metrics.py` (collect → evaluate), `bootstrap.py` (percentile CIs), `artifacts.py` (`save_evaluation_results`).
+- `analysis/` — finished offline studies (`preprocessing_analysis.py`, `imbalance_experiment.py`).
 
-The **DataLoader contract** is the integration seam between anyone's model and the shared pipeline: each batch is `(inputs, targets, row_indices)` — a 3-tuple/list, or a mapping with keys `inputs`/`images`, `targets`/`labels`, `row_indices`/`indices`. Model output may be a logits `Tensor`, a mapping/object with `.logits`, or a tuple whose first element is logits. Malformed batches, out-of-range labels, and duplicate row indices raise rather than being coerced. Full contract and worked example: `docs/reports/evaluation_pipeline.md`.
+The evaluation flow: `collect_predictions` (model.eval + `torch.inference_mode`, sample-weighted mean loss, CPU collection) → `evaluate_predictions` (metrics, per-class table, absolute and row-normalized confusion matrices, always full nine-class shape even for unpredicted classes) → `evaluate_model` (both) → `save_evaluation_results` (writes `metrics.json`, `per_class_metrics.csv`, `predictions.csv`, `confusion_matrix.png`, `confusion_matrix_normalized.png` under `output/<root>/<run_name>/`, refusing to overwrite without `overwrite=True`).
+
+## Running experiments
+
+```bash
+uv run python scripts/train.py configs/train/baseline_cnn_64.yaml
+uv run python scripts/train.py configs/train/smoke_test.yaml --overwrite   # 2 epochs, CPU, small slice
+uv run python scripts/train.py <config> --override trainer.max_epochs=2 --device cpu
+uv run python scripts/inference.py --checkpoint output/runs/<name>/best_model.pt --split validation
+```
+
+Artifacts go to `output/runs/<config name>/`, checkpoints to `<checkpoint.directory>/<config name>/`. `trainer.max_epochs` defaults to **40**; the 4-epoch budget lives only inside `analysis/imbalance_experiment.py`, where it is a deliberate screening budget. Call `seed_everything` before creating any CUDA tensor — it sets `CUBLAS_WORKSPACE_CONFIG`, which has no effect once CUDA is initialized.
+
+Two invariants worth restating because they are easy to break from a config: a `param_groups` pattern that matches no parameter **raises** rather than silently folding into the default group, and `scripts/inference.py` refuses `--split test` without `--final-test-evaluation`.
 
 ## Repository conventions
 
@@ -52,7 +68,3 @@ Each work item flows through four artifacts sharing a numeric prefix: `specs/NN_
 Work happens on `feature/<slug>` branches merged via PR, one per GitHub issue, with Conventional Commit + emoji subjects (see the `commit-message` and `spec` skills). Project skills live in `.agents/skills/` and are symlinked as `.claude/skills`; `wafer-map-data-analyst` carries the domain-analysis conventions for anything touching WM-811K structure or EDA.
 
 A `PreToolUse` hook (`.claude/hooks/block_dangerous_commands.sh`) hard-blocks destructive shell commands — file removal, hard resets, forced cleans, force-pushes to main, piping remote content to a shell. It matches on the command text, so even a heredoc or a script that merely *contains* those strings is rejected; write such content with the Write tool instead of via the shell.
-
-## Current branch state
-
-PRs land as a stack, and part of it has **not reached `main`**: PR #12 (preprocessing) was merged into `feature/evaluation-pipeline` rather than `main`, and open draft PR #13 (class imbalance) targets `feature/image-preprocessing`. So `origin/feature/class-imbalance` carries modules absent from `main` — `datasets.py`, `preprocessing.py`, `preprocessing_analysis.py`, `imbalance.py`, `imbalance_experiment.py`, `models.py`, `training.py`. Check which branch you are on before assuming a module exists, and expect these PRs to need retargeting to `main`.

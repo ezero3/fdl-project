@@ -8,6 +8,22 @@ Reasoning behind every choice below is in [`design-notes.md`](design-notes.md). 
 
 Priorities: **P0** blocks other people, **P1** is needed for a defensible submission, **P2** improves results, **P3** is stretch.
 
+> [!NOTE]
+> **P0 items 1-4 and P1 item 6 are done** (branch `feature/training-framework`).
+> What exists now:
+>
+> - `configs/train/*.yaml` + `uv run python scripts/train.py configs/train/<name>.yaml` — one file per experiment, deep-merged over `defaults.yaml`, with a typo in a key stopping the run rather than silently training the default. Optimizer choice, LR schedules and per-parameter-group learning rates are all reachable from YAML.
+> - `uv run python scripts/inference.py --checkpoint <path> --split validation` — scores a checkpoint, saves full class probabilities for later post-hoc work, and refuses `--split test` without an explicit final-evaluation flag.
+> - `seed_everything` in `src/fdl_project/training/seed.py`, wired into both dataloader factories, with per-worker seeds. Deterministic CUDA kernels are off by default — see item 2 for why.
+> - Training budget now defaults to 40 epochs with early-stopping patience 5. The 4-epoch budget is now a documented, explicit choice inside the class-imbalance screening experiment only.
+> - `CheckpointManager` writes `best.pt` plus a small rolling window of recent epochs (the newest is what resume reads) to any directory (point it at mounted Drive on Colab), atomically, and resumes the whole run — optimizer, schedule, scaler, epoch, best-so-far, history and RNG state.
+> - W&B is a callback, off by default; turn it on per config. Logs the aggregate metrics, the learning rate and **per-class F1** each epoch, with the resolved config attached. See "Metric logging" below for what to set up on the platform.
+> - `data.cache: true` copies the split's raw uint8 maps into memory and releases the 2 GB source table (item 7).
+> - `src/fdl_project/` is now split into `config/ data/ models/ training/ evaluation/ analysis/`.
+>
+> Still open in P0/P1: three models (item 5), the final report with intervals (8), and qualitative error analysis (9).
+
+
 ## How we run experiments
 
 Everything that is **not** the model itself — preprocessing, augmentation, imbalance handling, optimizer settings — is compared on **one fixed model**, so each comparison is controlled and cheap. Only once a setup wins do we carry it to the real models and re-tune the parts that must change with the architecture.
@@ -23,25 +39,27 @@ One YAML per experiment (model, input size, augmentation, imbalance strategy, op
 
 *Why:* three people need to run different setups on Colab and compare results afterwards. Without this, everyone hand-edits notebooks and nothing is comparable.
 *Constraint:* the config must not narrow what PyTorch can express. Optimizer choice, learning-rate schedules (cosine, warmup, step), and **separate learning rates per parameter group** all have to be reachable from YAML — the last one is required for fine-tuning, see item 5.
-*Done when:* `python train.py experiments/<name>.yaml` trains, evaluates, and writes results under `output/`, and the config is recorded in the run's `metrics.json`.
+*Done when:* `uv run python scripts/train.py configs/train/<name>.yaml` trains, evaluates, and writes results under `output/runs/<name>/`, and the config is recorded in the run's `metrics.json`. ✅
 
 ### 2. Replace `set_reproducible_seed` with one seed-everything function
-Model it on Lightning's `seed_everything`: seed Python, NumPy and PyTorch, set `PYTHONHASHSEED`, give each dataloader worker its own derived seed, set `CUBLAS_WORKSPACE_CONFIG=:4096:8` before CUDA initializes, and enable deterministic algorithms in **warn-only** mode.
+Model it on Lightning's `seed_everything`: seed Python, NumPy and PyTorch, set `PYTHONHASHSEED`, and give each dataloader worker its own derived seed.
 
-*Why:* the current version raises a `RuntimeError` mid-training on GPU, because several convolution backward kernels have no deterministic implementation. It also leaves dataloader workers unseeded, which silently collapses augmentation to a single repeated view as soon as workers are used. (GPU random state itself is already fine — `torch.manual_seed` seeds all devices internally.)
-*Done when:* a short GPU run completes, two runs with the same seed give the same validation macro-F1, and that still holds with workers enabled.
+**Deterministic CUDA kernels are deliberately *not* enabled.** They were in the first version of this item; that was wrong. Forcing them disables the cuDNN autotuner — a real throughput cost, because our input shapes are fixed and autotuning wins on exactly that case — and still does not give bit-exact results, since kernels with no deterministic implementation fall back silently under `warn_only`. What reproducibility actually needs is identical initialization, batch order, sampler draws and augmentation views, and seeding alone gives all of that. The kernel-level jitter that remains is far below the bootstrap intervals we report, so it cannot change a conclusion. `seed_everything(seed, deterministic=True)` is still there for a one-off strict check, and only that path sets `CUBLAS_WORKSPACE_CONFIG`.
+
+*Why:* the current version raises a `RuntimeError` mid-training on GPU, because it enables deterministic algorithms in strict mode and several convolution backward kernels have no deterministic implementation. It also leaves dataloader workers unseeded, which silently collapses augmentation to a single repeated view as soon as workers are used. (GPU random state itself is already fine — `torch.manual_seed` seeds all devices internally.)
+*Done when:* a short GPU run completes, two runs with the same seed give the same validation macro-F1 to within a small tolerance, and that still holds with workers enabled. ✅ *(code and CPU tests done; the GPU half still needs one Colab run to confirm)*
 
 ### 3. Raise the training budget
 The shared `TrainingConfig` defaults to **4 epochs** — that was deliberately chosen for a fast strategy comparison, not for real training. Anything trained with the defaults is undertrained.
 
 *Why:* the current defaults make every model look equally mediocre and hide real differences between them.
-*Done when:* configs specify e.g. 40 epochs with early-stopping patience 5, and at least one model has actually stopped early rather than hitting the cap.
+*Done when:* configs specify e.g. 40 epochs with early-stopping patience 5, and at least one model has actually stopped early rather than hitting the cap. ✅ *(defaults changed; the second half waits on a real run)*
 
 ### 4. Checkpoint to Google Drive during training
 Write model weights, optimizer state, epoch number and RNG state to Drive at the end of every epoch, and support resuming from the last one.
 
 *Why:* Colab disconnects without warning and wipes local disk. Once runs are 40 epochs rather than 4, losing one costs hours of GPU time we may not get back the same day.
-*Done when:* a run killed halfway resumes from its last checkpoint and finishes with the same result as an uninterrupted run.
+*Done when:* a run killed halfway resumes from its last checkpoint and finishes with the same result as an uninterrupted run. ✅ *(covered by `tests/test_checkpoint.py`)*
 
 ---
 
@@ -54,6 +72,7 @@ Two built by us, one pretrained, per the course requirement.
 - **Pretrained:** MobileNetV3 or ResNet18, **fine-tuned or built upon — not used as a frozen feature extractor.** Train the whole network, but give the pretrained encoder a much smaller learning rate than the newly initialised head (10–100× smaller is the usual range). Freezing the encoder is also worth one run as a cheap, fast baseline — it trains in minutes and tells you how much the fine-tuning actually buys — but it is a comparison point, not the plan.
 - Use a **learning-rate schedule**; cosine annealing with a short warmup is a sensible default.
 - Pretrained backbones need **224×224 input** rather than 64×64, because their filters expect that scale. This is a config change, not new code.
+- **Run the input-representation comparison on the pretrained model.** Two arms: our default 3-channel one-hot, and the three states mapped to a grayscale-style image replicated to 3 channels with ImageNet mean/std normalization. Cheap, and it occasionally makes a large difference. The reason to bother: ImageNet filters were trained on natural photographs, and one-hot indicator channels look nothing like that distribution, so the pretrained weights may transfer poorly to them. The reason it is not the default: the grayscale arm reintroduces the false ordering that one-hot exists to remove (it implies a defect is "twice" a functional die), which is why we rejected single-channel input in the first place. Measure it, do not argue about it. Run it **only on the pretrained backbone** — a result here is about matching the pretraining distribution and will not transfer to our from-scratch models. Needs a small code change, not just config: `PreprocessingConfig` currently refuses to combine one-hot with any normalization and has no ImageNet strategy.
 
 *Why:* it's the deliverable.
 *Done when:* three trained models, each with saved weights and evaluation artifacts, all evaluated by the shared pipeline.
@@ -62,13 +81,29 @@ Two built by us, one pretrained, per the course requirement.
 Weights & Biases free tier. The training loop already accepts a per-epoch callback that receives a flat metrics dict, so this is one argument, not a refactor. **Use a private project, not a public one.**
 
 *Why:* three people × several configs = one comparable table instead of screenshots in a group chat.
-*Done when:* all runs from all three of us appear in one project with their config attached.
+*Done when:* all runs from all three of us appear in one project with their config attached. ⏳ *(code done; the account setup below is not)*
+
+**What to set up on wandb.ai** — the plain free plan has no team access control, so three people cannot share a project on it:
+1. Sign up with your institutional address (`@campus.unimib.it`).
+2. Apply for the free **Academic** plan: free forever for students, unlimited teams, 200 GB, up to 100 seats. This is the step that makes a shared project possible.
+3. Create a team (entity), e.g. `unimib-fdl`, and invite the other two.
+4. Create the project inside that team and set its visibility to **Private**.
+5. Each person generates their own API key and stores it in Colab Secrets as `WANDB_API_KEY` — never pasted into a cell.
+6. Put `entity` and `project` into `configs/train/defaults.yaml` and flip `enabled: true`.
+
+While approval is pending, `mode: offline` records runs locally and `wandb sync` uploads them later, so nobody is blocked.
 
 ### 7. In-memory caching of wafer maps
 Cache the raw wafer maps as `uint8` arrays (~350 MB for all labeled data) and do the geometry and encoding on the fly. Do **not** cache preprocessed float tensors — that is ~8.5 GB and will exhaust Colab's memory.
 
-*Why:* removes repeated work per epoch and lets the 2 GB source dataframe be dropped.
-*Done when:* an epoch is measurably faster and memory use is stable across epochs.
+*Why:* lets the 2 GB source dataframe be dropped.
+*Done when:* the source table is released and memory use is stable across epochs. ✅
+
+**Measured, and the original justification was wrong.** Caching does *not* make an epoch measurably faster: on the real train split it moved 6,000 item reads from 0.54 s to 0.53 s, which is noise. Pandas lookup was never the bottleneck — the letterbox and one-hot encoding dominate, and those still run per batch by design, because augmentation will make the transform output differ per epoch anyway. The real gain is memory: **2 GB of dataframe replaced by 161 MB of uint8 maps** (~200 MB including validation), which is what matters on a 12 GB Colab VM at 224x224 with workers.
+
+There is a second, smaller win that came out of the same measurement: a cached map is validated once when the cache is built, so the per-access dtype and state checks can be skipped. That took item reads from 0.45 s to 0.36 s per 6,000 (~26%), about 2 s per epoch at 64x64.
+
+**Precomputing more was measured and rejected.** Per item the pipeline costs 76 us at 64x64 and 371 us at 224x224, split between the letterbox and the one-hot encoding. Caching the letterboxed uint8 map would remove about half of that, but it needs 496 MB at 64x64 and **6.1 GB** at 224x224 — so it only helps in the setting that is already fast and is impossible in the one that is slow. With `num_workers: 2` the remaining cost is overlapped with GPU compute anyway, and it would constrain augmentation to transforms that commute with the letterbox.
 
 ### 8. Report results with uncertainty, and touch the test split once
 The evaluation pipeline can produce bootstrap confidence intervals; use them in the final comparison. Rare classes have very little test support (15 images for the rarest), so point estimates alone are misleading.
