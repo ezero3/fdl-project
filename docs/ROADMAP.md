@@ -101,36 +101,44 @@ Optional sixth imbalance strategy: limit the majority class to ~12k images **per
 *Done when:* it has been screened on validation like the other strategies, and the better one is used.
 
 ### 12. Free post-hoc wins — do these near the end
-Three techniques that need no retraining and are close to free:
+Two techniques that need no retraining:
 
-- **Test-time augmentation:** average predictions over the same 8 symmetries used for training augmentation. Costs 8× inference (seconds), typically worth 1–2 points of macro-F1, and is entirely legitimate — it never touches labels.
-- **Per-class decision thresholds** tuned on validation to maximise macro-F1, rather than always taking the arg-max.
-- **Ensemble** the three final models by averaging their probabilities.
+- **Test-time augmentation:** average predictions over the same 8 symmetries used for training augmentation. Costs 8× inference (seconds), typically worth 1–2 points of macro-F1, and never touches labels.
+- **Per-class decision thresholds** tuned on validation to maximise macro-F1, instead of always taking the arg-max.
 
-*Why:* the cheapest remaining accuracy in the whole project, and all three are standard practice worth showing.
-*Done when:* each is measured on validation, and only the ones that actually help are used for the final test evaluation.
+*Why:* the cheapest remaining accuracy in the project.
+*Done when:* each is measured on validation, and only the ones that actually help are used for the single test evaluation.
+
+*Deliberately excluded:* ensembling the three final models. It would raise the headline number, but it is competition tuning rather than a deep-learning result, and it obscures the architecture comparison that the report is actually about.
 
 ### 13. Alternative long-tail methods worth one run each
 Two well-established techniques we have not tried, both cheap:
 
-- **Logit adjustment:** add the log of each class's training frequency to its logit. One line of code, principled, and often matches or beats resampling.
-- **Two-stage (decoupled) training:** train the network on the natural distribution, then freeze the features and retrain only the final classifier layer with balanced sampling. Known to beat one-stage resampling on long-tailed data, and the second stage takes minutes.
+- **Logit adjustment:** shift each class's output score by the log of its training frequency, moving the decision boundary to where it would sit under balanced classes. Applied *post-hoc* it needs no retraining at all. Note it must be compared against the **unweighted baseline**, not stacked on the current sampler — the sampler already flattens the effective prior, so doing both double-corrects.
+- **Two-stage (decoupled) training:** train the whole network on the natural, imbalanced distribution, then freeze it and retrain **only the final classifier layer** with balanced sampling. Learning features on the natural distribution and rebalancing only the classifier beats one-stage resampling on long-tailed data, and the second stage takes minutes.
 
-*Why:* our current policy was chosen from five candidates under a 4-epoch budget; these are strong candidates that were never in that comparison.
+*Why:* our current policy was chosen from five candidates under a 4-epoch budget. These two work by a different mechanism than anything in that comparison — reweighting changes what mistakes cost, resampling changes what the model sees, these change where the decision boundary sits.
 *Done when:* each is screened on validation against the current sampler, on the fixed test-bed model.
 
 ---
 
 ## P3 — Stretch, only with spare time
 
-### 14. Self-supervised pretraining on the unlabeled data
+### 14. Pseudo-labeling the unlabeled wafers
+Train the best model, predict on the ~617k unlabeled wafers, keep only high-confidence predictions, and retrain with them included. Costs roughly two training runs.
+
+**Guard rails are not optional here.** The majority class is ~89% of the labeled data, so pseudo-labels will be overwhelmingly that class, and the model is least reliable on exactly the rare classes we want more of — unguarded, this amplifies the imbalance it is meant to fix. Use a high confidence threshold, a **per-class cap** on how many pseudo-labels each class may contribute, and exclude any class whose validation precision is poor.
+
+*Worth doing only if a full training run turns out to be fast.*
+
+### 15. Self-supervised pretraining on the unlabeled data
 ~617k unlabeled wafers are available and already filtered so none of them come from validation or test groups. Pretrain an autoencoder on them, then fine-tune a classifier head on the labeled set. Reconstruct pixels as a **3-way classification per pixel**, not regression — otherwise the decoder outputs meaningless in-between values.
 
 *Rough cost:* ~30 minutes of GPU pretraining; most of the effort is in the fine-tuning protocol.
 
-*Alternative worth knowing:* a Mean Teacher setup with a supervised contrastive loss is published on this exact dataset and reports a ~4.5 point F1 gain over a plain ResNet18 baseline. It uses unlabeled data through prediction consistency rather than reconstruction, which is often easier to get working than an autoencoder. See `design-notes.md` §12.
+*Alternative worth knowing:* **Mean Teacher with a supervised contrastive loss**, published on this exact dataset with a ~4.5 point F1 gain over a plain ResNet18. Mean Teacher keeps an exponential moving average of the model as a "teacher", shows it and the student two differently augmented views of the same *unlabeled* wafer, and penalises disagreement — so unlabeled data is used without ever needing its label. The contrastive part pulls same-class embeddings together on the labeled data. It is a **single training run at ~1.5–2× cost**, not a separate pretraining stage, and our 8 exact symmetries are ideal as the two views. See `design-notes.md` §12.
 
-### 15. LoRA fine-tuning of a larger pretrained model
+### 16. LoRA fine-tuning of a larger pretrained model
 Adapt a backbone too large to fine-tune outright (a ViT, say) by training small low-rank adapters while the original weights stay fixed. Memory-cheap, and an unusual technique to show in a course project.
 
 *Why:* it turns "too big to fine-tune, so we froze it" into "too big to fine-tune, so we adapted it properly".
@@ -144,6 +152,6 @@ Adapt a backbone too large to fine-tune outright (a ViT, say) by training small 
 
 ## If time runs short
 
-Items **1–8** are the minimum for a submission that stands up to questions. Items 9–13 are where the remaining accuracy is — **12 is the cheapest of all and should not be skipped**. Items 14–15 are stretch, and good presentation material either way.
+Items **1–8** are the minimum for a submission that stands up to questions. Items 9–13 are where the remaining accuracy is — **12 is the cheapest of all and should not be skipped**. Items 14–16 are stretch, and good presentation material either way.
 
 External benchmarks and why most published WM-811K numbers are not comparable to ours: `design-notes.md` §12. Read it before quoting anyone's accuracy.
