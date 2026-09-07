@@ -17,6 +17,7 @@ from fdl_project.data.preprocessing import (
     PreprocessingConfig,
     WaferMapPreprocessor,
 )
+from fdl_project.training.seed import build_dataloader_generator, seed_worker
 
 SplitName = Literal["train", "validation", "test"]
 _SPLIT_NAMES = frozenset({"train", "validation", "test"})
@@ -196,10 +197,10 @@ def create_dataloader(
     if dataset.split_name in {"validation", "test"} and should_shuffle:
         raise ValueError("Validation and test DataLoaders must use shuffle=False.")
 
-    generator = None
-    if should_shuffle:
-        generator = torch.Generator()
-        generator.manual_seed(seed)
+    # The generator drives shuffling and, together with seed_worker, the
+    # per-worker random streams; workers that share one seed would repeat the
+    # same augmented views every epoch.
+    generator = build_dataloader_generator(seed)
 
     return DataLoader(
         dataset,
@@ -210,4 +211,5 @@ def create_dataloader(
         drop_last=False,
         persistent_workers=num_workers > 0,
         generator=generator,
+        worker_init_fn=seed_worker if num_workers > 0 else None,
     )

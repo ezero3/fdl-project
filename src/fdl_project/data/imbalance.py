@@ -13,6 +13,7 @@ from torch.nn import functional as F
 from torch.utils.data import DataLoader, WeightedRandomSampler
 
 from fdl_project.constants import NUM_CLASSES
+from fdl_project.training.seed import build_dataloader_generator, seed_worker
 
 WeightingMethod = Literal["none", "inverse_sqrt", "effective_number"]
 LossName = Literal["cross_entropy", "focal"]
@@ -351,7 +352,7 @@ def create_imbalance_training_dataloader(
         raise ValueError("target_indices must contain one target per dataset item.")
     counts = compute_class_counts(targets)
     sampler = build_weighted_sampler(config, targets, counts, seed=seed)
-    generator = torch.Generator().manual_seed(seed)
+    generator = build_dataloader_generator(seed)
     return DataLoader(
         dataset,
         batch_size=batch_size,
@@ -362,4 +363,5 @@ def create_imbalance_training_dataloader(
         drop_last=False,
         persistent_workers=num_workers > 0,
         generator=generator if sampler is None else None,
+        worker_init_fn=seed_worker if num_workers > 0 else None,
     )
