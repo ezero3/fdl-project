@@ -1,0 +1,19 @@
+# Focal gamma 2.0 on top of the sampler. On baseline_v2 this tied its control (0.7828 vs 0.7830); this asks whether that holds on the model that actually wins.
+name: baseline_cnn-rotation-focal_g2-sampler
+
+model:
+  name: baseline_cnn
+  kwargs: {dropout: 0.2}
+
+data:
+  augmentation:
+    name: rotation
+    probability: 0.5
+    kwargs: {degrees: 180.0}
+
+imbalance:
+  name: focal_sampler_g2
+  loss: focal
+  focal_gamma: 2.0
+  sampling: weighted
+  sampling_weighting: inverse_sqrt

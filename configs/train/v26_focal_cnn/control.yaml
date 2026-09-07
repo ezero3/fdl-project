@@ -1,0 +1,15 @@
+# The control: the phase-2 arm that scored 0.8800. Everything else in this series differs from it by the loss alone.
+name: baseline_cnn-rotation-sampler
+
+model:
+  name: baseline_cnn
+  kwargs: {dropout: 0.2}
+
+data:
+  augmentation:
+    name: rotation
+    probability: 0.5
+    kwargs: {degrees: 180.0}
+
+imbalance:
+  preset: inverse_sqrt_sampler

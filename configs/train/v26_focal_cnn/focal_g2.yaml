@@ -1,0 +1,17 @@
+# Focal alone, no sampler. Included for completeness: on baseline_v2 this lost badly (~0.70 against ~0.78), and the mechanism -- the sampler is what makes rare classes visible -- is not model-specific, so it is expected to lose here too.
+name: baseline_cnn-rotation-focal_g2
+
+model:
+  name: baseline_cnn
+  kwargs: {dropout: 0.2}
+
+data:
+  augmentation:
+    name: rotation
+    probability: 0.5
+    kwargs: {degrees: 180.0}
+
+imbalance:
+  name: focal_only_g2
+  loss: focal
+  focal_gamma: 2.0

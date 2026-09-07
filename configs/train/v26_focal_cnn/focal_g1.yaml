@@ -1,0 +1,17 @@
+# Focal alone at gamma 1.0. Same expectation as focal_g2.
+name: baseline_cnn-rotation-focal_g1
+
+model:
+  name: baseline_cnn
+  kwargs: {dropout: 0.2}
+
+data:
+  augmentation:
+    name: rotation
+    probability: 0.5
+    kwargs: {degrees: 180.0}
+
+imbalance:
+  name: focal_only_g1
+  loss: focal
+  focal_gamma: 1.0
