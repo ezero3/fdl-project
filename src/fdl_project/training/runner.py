@@ -21,6 +21,7 @@ from fdl_project.config.loader import dump_experiment_config
 from fdl_project.config.registry import build_model
 from fdl_project.config.schema import ExperimentConfig
 from fdl_project.constants import class_encoding_metadata
+from fdl_project.data.augmentation import build_augmentation
 from fdl_project.data.datasets import (
     WM811KDataset,
     create_dataloader,
@@ -118,6 +119,14 @@ def build_datasets(
             split_name,
             preprocessing_config=config.data.preprocessing,
             cache_maps=config.data.cache,
+            augmentation=(
+                build_augmentation(
+                    config.data.augmentation.name,
+                    probability=config.data.augmentation.probability,
+                )
+                if split_name == "train"
+                else None
+            ),
         )
         if config.data.subset is not None:
             dataset = _subset_dataset(dataset, config.data.subset, config.seed)

@@ -16,6 +16,7 @@ from typing import Any
 import yaml
 
 from fdl_project.config.schema import (
+    AugmentationConfig,
     CheckpointConfig,
     DataConfig,
     EarlyStoppingConfig,
@@ -244,6 +245,11 @@ def build_experiment_config(payload: dict[str, Any]) -> ExperimentConfig:
         DataConfig,
         section="data",
         preprocessing=_build_preprocessing(data_payload.get("preprocessing")),
+        augmentation=_build_section(
+            data_payload.get("augmentation"),
+            AugmentationConfig,
+            section="data.augmentation",
+        ),
     )
     return ExperimentConfig(
         name=payload["name"],

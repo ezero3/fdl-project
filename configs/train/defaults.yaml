@@ -21,6 +21,13 @@ data:
     geometry: letterbox   # aspect-ratio preserving; see docs/design-notes.md
     encoding: one_hot     # 3 channels: background / functional / defective die
     normalization: none
+  # Train-only. 'dihedral8' is the 4 rotations by 90 degrees and their mirrors:
+  # index permutations, so no interpolation and no invalid cell states, and
+  # every one of them preserves the label. Free-angle rotation and translation
+  # are deliberately unavailable -- see docs/ROADMAP.md item 10.
+  augmentation:
+    name: null            # null | dihedral8
+    probability: 1.0
 
 # The validated policy from the class-imbalance experiment. Presets:
 # unweighted_ce, inverse_sqrt_ce, effective_number_ce, inverse_sqrt_sampler,

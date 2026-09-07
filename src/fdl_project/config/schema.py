@@ -53,6 +53,35 @@ def _require_non_negative_integer(value: Any, name: str) -> int:
 
 
 @dataclass(frozen=True)
+class AugmentationConfig:
+    """Train-only augmentation. ``name: null`` disables it."""
+
+    name: str | None = None
+    probability: float = 1.0
+
+    def __post_init__(self) -> None:
+        name = self.name
+        if isinstance(name, str) and name.lower() in {"none", "null", ""}:
+            name = None
+        if name is not None and not isinstance(name, str):
+            raise ValueError("data.augmentation.name must be a string or null.")
+        object.__setattr__(self, "name", name)
+        if (
+            isinstance(self.probability, bool)
+            or not isinstance(self.probability, (int, float))
+            or not 0.0 <= self.probability <= 1.0
+        ):
+            raise ValueError("data.augmentation.probability must lie in [0, 1].")
+
+    @property
+    def enabled(self) -> bool:
+        return self.name is not None
+
+    def to_dict(self) -> dict[str, Any]:
+        return {"name": self.name, "probability": float(self.probability)}
+
+
+@dataclass(frozen=True)
 class DataConfig:
     """Where the data lives and how it is turned into batches."""
 
@@ -62,6 +91,7 @@ class DataConfig:
     pin_memory: bool = False
     cache: bool = True
     preprocessing: PreprocessingConfig = PreprocessingConfig()
+    augmentation: AugmentationConfig = AugmentationConfig()
     subset: int | None = None
 
     def __post_init__(self) -> None:
@@ -74,6 +104,8 @@ class DataConfig:
             raise ValueError("data.cache must be a boolean.")
         if not isinstance(self.preprocessing, PreprocessingConfig):
             raise ValueError("data.preprocessing must be a PreprocessingConfig.")
+        if not isinstance(self.augmentation, AugmentationConfig):
+            raise ValueError("data.augmentation must be an AugmentationConfig.")
         if self.subset is not None:
             _require_positive_integer(self.subset, "data.subset")
 
@@ -85,6 +117,7 @@ class DataConfig:
             "pin_memory": self.pin_memory,
             "cache": self.cache,
             "preprocessing": self.preprocessing.to_dict(),
+            "augmentation": self.augmentation.to_dict(),
             "subset": self.subset,
         }
 

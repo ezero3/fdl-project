@@ -13,6 +13,7 @@ from torch import Tensor
 from torch.utils.data import DataLoader, Dataset
 
 from fdl_project.constants import encode_label
+from fdl_project.data.augmentation import DihedralAugmentation
 from fdl_project.data.preprocessing import (
     DEFAULT_PREPROCESSING_CONFIG,
     PreprocessingConfig,
@@ -96,9 +97,16 @@ class WM811KDataset(Dataset[tuple[Tensor, Tensor, Tensor]]):
         split_name: SplitName,
         preprocessing_config: PreprocessingConfig = DEFAULT_PREPROCESSING_CONFIG,
         cache_maps: bool = False,
+        augmentation: DihedralAugmentation | None = None,
     ) -> None:
         if split_name not in _SPLIT_NAMES:
             raise ValueError(f"Unknown split {split_name!r}.")
+        if augmentation is not None and split_name != "train":
+            # Validation and test are evaluated at their natural distribution;
+            # augmenting them would make every model's numbers incomparable.
+            raise ValueError(
+                f"Augmentation is train-only; refusing to augment {split_name!r}."
+            )
         if not dataframe.index.is_unique:
             raise ValueError("WM-811K DataFrame index must be unique.")
         missing_columns = {"waferMap", "failureType"} - set(dataframe.columns)
@@ -142,6 +150,7 @@ class WM811KDataset(Dataset[tuple[Tensor, Tensor, Tensor]]):
         self.split_name = split_name
         self.preprocessing_config = preprocessing_config
         self.preprocessor = WaferMapPreprocessor(preprocessing_config)
+        self.augmentation = augmentation
         self.cached_maps: list[np.ndarray] | None = None
         if cache_maps:
             self._build_cache()
@@ -204,6 +213,8 @@ class WM811KDataset(Dataset[tuple[Tensor, Tensor, Tensor]]):
         image = self.preprocessor(
             self.wafer_map(position), validate=self.cached_maps is None
         )
+        if self.augmentation is not None:
+            image = self.augmentation(image)
         target = torch.tensor(int(self.target_indices[position]), dtype=torch.long)
         source_index = torch.tensor(row_index, dtype=torch.long)
         return image, target, source_index
@@ -216,6 +227,7 @@ def create_split_dataset(
     *,
     preprocessing_config: PreprocessingConfig = DEFAULT_PREPROCESSING_CONFIG,
     cache_maps: bool = False,
+    augmentation: DihedralAugmentation | None = None,
 ) -> WM811KDataset:
     """Build a supervised Dataset from one persisted split."""
 
@@ -225,6 +237,7 @@ def create_split_dataset(
         split_name=split_name,
         preprocessing_config=preprocessing_config,
         cache_maps=cache_maps,
+        augmentation=augmentation,
     )
 
 

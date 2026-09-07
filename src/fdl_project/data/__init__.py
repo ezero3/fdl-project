@@ -1,5 +1,13 @@
 """Dataset construction, wafer-map preprocessing, and imbalance handling."""
 
+from fdl_project.data.augmentation import (
+    NUM_DIHEDRAL_TRANSFORMS,
+    DihedralAugmentation,
+    apply_dihedral,
+    available_augmentations,
+    build_augmentation,
+    dihedral_views,
+)
 from fdl_project.data.datasets import (
     WM811KDataset,
     create_dataloader,
@@ -33,6 +41,12 @@ from fdl_project.data.preprocessing import (
 
 __all__ = [
     "DEFAULT_IMBALANCE_CONFIG",
+    "NUM_DIHEDRAL_TRANSFORMS",
+    "DihedralAugmentation",
+    "apply_dihedral",
+    "available_augmentations",
+    "build_augmentation",
+    "dihedral_views",
     "DEFAULT_PREPROCESSING_CONFIG",
     "PRESET_IMBALANCE_CONFIGS",
     "WAFER_STATE_COUNT",
