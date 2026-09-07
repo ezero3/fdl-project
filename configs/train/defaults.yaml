@@ -15,10 +15,15 @@ data:
   # machine. Set an integer to pin it.
   num_workers: auto
   pin_memory: true
-  # Copy this split's raw uint8 maps into memory (~350 MB for all labeled
-  # data) and drop the 2 GB source table. Geometry and encoding still run per
-  # batch; caching the preprocessed float tensors would be ~8.5 GB at 64x64.
-  cache: true
+  # What to hold in memory. The 2 GB source table is dropped either way.
+  #   auto      letterboxed maps when they fit a 2 GB budget, else raw
+  #   geometry  letterboxed to target_size -- fastest; 0.46 GB at 64x64,
+  #             5.7 GB at 224x224
+  #   raw       native maps; geometry redone per access (the old behaviour)
+  #   false     no cache
+  # Encoding is never cached: augmentation makes the final tensor differ per
+  # epoch, and float32 one-hot would be 7.1 GB at 64x64 and 87 GB at 224x224.
+  cache: auto
   # subset: 2000          # smoke tests only; never set for a real run
   preprocessing:
     target_size: [64, 64]

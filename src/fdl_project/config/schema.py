@@ -113,7 +113,7 @@ class DataConfig:
     split_directory: Path = Path("data/splits")
     num_workers: int | str = "auto"
     pin_memory: bool = False
-    cache: bool = True
+    cache: bool | str = "auto"
     preprocessing: PreprocessingConfig = PreprocessingConfig()
     augmentation: AugmentationConfig = AugmentationConfig()
     subset: int | None = None
@@ -131,8 +131,20 @@ class DataConfig:
         _require_non_negative_integer(self.num_workers, "data.num_workers")
         if not isinstance(self.pin_memory, bool):
             raise ValueError("data.pin_memory must be a boolean.")
-        if not isinstance(self.cache, bool):
-            raise ValueError("data.cache must be a boolean.")
+        # Modes rather than a boolean: what to cache depends on the machine
+        # and the geometry. Letterboxed maps cost 0.6 GB at 64x64 but 7.8 GB
+        # at 224x224, which is fine on a 51 GB VM and not on a 12 GB one.
+        #   auto     -- letterboxed if it fits the budget, else raw
+        #   geometry -- letterboxed to target_size (fastest, largest)
+        #   raw      -- native maps, geometry redone per access (was: True)
+        #   false    -- no cache, read from the source table
+        if self.cache is True:
+            object.__setattr__(self, "cache", "auto")
+        if self.cache is not False and self.cache not in {"auto", "geometry", "raw"}:
+            raise ValueError(
+                "data.cache must be false, 'auto', 'geometry' or 'raw'; "
+                f"received {self.cache!r}."
+            )
         if not isinstance(self.preprocessing, PreprocessingConfig):
             raise ValueError("data.preprocessing must be a PreprocessingConfig.")
         if not isinstance(self.augmentation, AugmentationConfig):

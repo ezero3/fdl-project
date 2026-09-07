@@ -144,7 +144,7 @@ def test_caching_yields_identical_tensors(tmp_path) -> None:
 
     assert cached.cached_maps is not None
     assert len(cached.cached_maps) == len(cached)
-    assert all(item.dtype == np.uint8 for item in cached.cached_maps)
+    assert cached.cached_maps.dtype == torch.uint8
     for position in range(len(plain)):
         expected = plain[position]
         actual = cached[position]
@@ -191,3 +191,49 @@ def test_select_rejects_invalid_positions(
     dataset = create_split_dataset(frame, tmp_path, "train")
     with pytest.raises(ValueError):
         dataset.select(np.array(positions, dtype=np.int64))
+
+
+def test_cache_mode_auto_backs_off_at_high_resolution(tmp_path) -> None:
+    """Letterboxed maps are 0.46 GB at 64x64 but 5.7 GB at 224x224. A 12 GB
+    Colab VM with workers cannot hold the second, so 'auto' falls back to
+    caching native maps and redoing geometry per access."""
+
+    from fdl_project.data.datasets import _resolve_cache_mode
+    from fdl_project.data.preprocessing import PreprocessingConfig
+
+    small = PreprocessingConfig(target_size=(64, 64))
+    large = PreprocessingConfig(target_size=(224, 224))
+
+    assert _resolve_cache_mode("auto", 121_063, small) == "geometry"
+    assert _resolve_cache_mode("auto", 121_063, large) == "raw"
+    assert _resolve_cache_mode(False, 121_063, small) is None
+    assert _resolve_cache_mode("geometry", 121_063, large) == "geometry"  # forced
+
+
+def test_every_cache_mode_returns_the_same_tensors(tmp_path) -> None:
+    """The cache changes speed and memory, never the data."""
+
+    frame = _toy_dataframe()
+    np.save(tmp_path / "train_indices.npy", frame.index.to_numpy())
+
+    plain = create_split_dataset(frame.copy(), tmp_path, "train", cache_maps=False)
+    geometry = create_split_dataset(frame.copy(), tmp_path, "train", cache_maps="geometry")
+    raw = create_split_dataset(frame.copy(), tmp_path, "train", cache_maps="raw")
+
+    for position in range(len(plain)):
+        expected = plain[position][0]
+        assert torch.equal(geometry[position][0], expected)
+        assert torch.equal(raw[position][0], expected)
+
+
+def test_cache_is_one_contiguous_tensor_not_a_list(tmp_path) -> None:
+    """CPython refcounts every object a forked worker touches, so a list of
+    121k arrays has its pages copied per worker despite copy-on-write. One
+    tensor's buffer is genuinely shared."""
+
+    frame = _toy_dataframe()
+    np.save(tmp_path / "train_indices.npy", frame.index.to_numpy())
+    dataset = create_split_dataset(frame, tmp_path, "train", cache_maps="geometry")
+
+    assert isinstance(dataset.cached_maps, torch.Tensor)
+    assert dataset.cached_maps.ndim == 3

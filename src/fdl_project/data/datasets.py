@@ -18,9 +18,31 @@ from fdl_project.data.preprocessing import (
     DEFAULT_PREPROCESSING_CONFIG,
     PreprocessingConfig,
     WaferMapPreprocessor,
+    encode_categorical_map,
+    transform_categorical_map,
     validate_wafer_map,
 )
 from fdl_project.training.seed import build_dataloader_generator, seed_worker
+
+#: Above this, 'auto' falls back to caching native maps instead of
+#: letterboxed ones. 2 GB is comfortable on a 12 GB Colab VM with workers;
+#: at 224x224 the letterboxed cache alone would be 7.8 GB.
+GEOMETRY_CACHE_BUDGET_BYTES = 2 * 1024**3
+
+
+def _resolve_cache_mode(
+    cache: bool | str, count: int, config: PreprocessingConfig
+) -> str | None:
+    """Turn the configured cache setting into 'geometry', 'raw' or None."""
+
+    if cache is False:
+        return None
+    if cache == "auto":
+        height, width = config.target_size
+        estimated = count * height * width
+        return "geometry" if estimated <= GEOMETRY_CACHE_BUDGET_BYTES else "raw"
+    return str(cache)
+
 
 SplitName = Literal["train", "validation", "test"]
 _SPLIT_NAMES = frozenset({"train", "validation", "test"})
@@ -151,39 +173,73 @@ class WM811KDataset(Dataset[tuple[Tensor, Tensor, Tensor]]):
         self.preprocessing_config = preprocessing_config
         self.preprocessor = WaferMapPreprocessor(preprocessing_config)
         self.augmentation = augmentation
-        self.cached_maps: list[np.ndarray] | None = None
-        if cache_maps:
+        self.cached_maps: Tensor | None = None
+        self.cache_mode = _resolve_cache_mode(
+            cache_maps, len(self.row_indices), preprocessing_config
+        )
+        if self.cache_mode is not None:
             self._build_cache()
 
     def _build_cache(self) -> None:
-        """Copy this split's raw maps out of the source table as uint8.
+        """Cache each map already **letterboxed to the target geometry**.
 
-        Only the *raw* categorical maps are cached, around 350 MB for all
-        labeled data. Caching preprocessed float tensors instead would be
-        ~8.5 GB at 64x64 and far more at 224x224, and it would also be wrong
-        once augmentation makes the transform output differ per epoch.
+        Two things are bought here, and only one of them is obvious.
 
-        Dropping the reference to the 2 GB source table afterwards is the
-        point: with it held, the copy is pure overhead. Dataloader workers
-        inherit the cache by fork on Linux and Colab; a spawn-based platform
-        copies it per worker.
+        *Speed.* The geometry step is deterministic given ``target_size``, so
+        running it once per wafer rather than once per access removes it from
+        every epoch. Measured at 64x64 it is roughly half the per-item cost
+        (~39 us of ~93), on top of the ~8.6 us validation which a cached map
+        also no longer needs. What is deliberately **not** cached is the
+        encoding: augmentation makes the final tensor differ per epoch, and a
+        float32 one-hot cache would be 7.1 GB at 64x64 and **87 GB** at
+        224x224. Categorical uint8 is 0.59 GB and 7.3 GB respectively.
+
+        *Memory.* The cache is one contiguous array, not a list of 121k
+        arrays. That matters more than it sounds on a forked dataloader:
+        CPython refcounts every object a worker touches, so a list of 121k
+        Python objects has its pages copied per worker despite copy-on-write,
+        while a single array's buffer is genuinely shared.
+
+        Dropping the 2 GB source table afterwards is the point of the copy.
         """
 
-        # validate_wafer_map here rather than on every access: the checks
-        # cost ~8.6 us per item, and a cached map cannot change between epochs.
-        self.cached_maps = [
-            validate_wafer_map(self.dataframe.at[int(row_index), "waferMap"])
-            .to(dtype=torch.uint8)
-            .numpy()
-            for row_index in self.row_indices
-        ]
+        # validate_wafer_map here rather than on every access: the checks cost
+        # ~8.6 us per item, and a cached map cannot change between epochs.
+        if self.cache_mode == "raw":
+            # Native maps: geometry is redone per access, but the source table
+            # can still be dropped and validation still happens only once.
+            self.cached_maps = None
+            self.raw_maps = [
+                validate_wafer_map(self.dataframe.at[int(row_index), "waferMap"])
+                .to(dtype=torch.uint8)
+                for row_index in self.row_indices
+            ]
+            self.dataframe = None
+            return
+
+        height, width = self.preprocessing_config.target_size
+        # A torch tensor rather than a numpy array: __getitem__ then indexes it
+        # directly, with no per-item numpy->torch conversion and no
+        # non-writable-array warning.
+        cache = torch.empty(
+            (len(self.row_indices), height, width), dtype=torch.uint8
+        )
+        for position, row_index in enumerate(self.row_indices):
+            validated = validate_wafer_map(
+                self.dataframe.at[int(row_index), "waferMap"]
+            )
+            cache[position] = transform_categorical_map(
+                validated, self.preprocessing_config
+            ).to(dtype=torch.uint8)
+        self.cached_maps = cache
         self.dataframe = None
 
     def wafer_map(self, position: int) -> Any:
-        """Return one raw categorical map, from the cache when there is one."""
+        """Return one raw categorical map, for the non-geometry paths."""
 
-        if self.cached_maps is not None:
-            return self.cached_maps[position]
+        raw = getattr(self, "raw_maps", None)
+        if raw is not None:
+            return raw[position]
         return self.dataframe.at[int(self.row_indices[position]), "waferMap"]
 
     def select(self, positions: np.ndarray) -> "WM811KDataset":
@@ -201,7 +257,10 @@ class WM811KDataset(Dataset[tuple[Tensor, Tensor, Tensor]]):
         subset.target_indices = self.target_indices[chosen].copy()
         subset.target_indices.setflags(write=False)
         if self.cached_maps is not None:
-            subset.cached_maps = [self.cached_maps[index] for index in chosen]
+            subset.cached_maps = self.cached_maps[torch.from_numpy(chosen)]
+        raw = getattr(self, "raw_maps", None)
+        if raw is not None:
+            subset.raw_maps = [raw[index] for index in chosen]
         return subset
 
     def __len__(self) -> int:
@@ -209,10 +268,17 @@ class WM811KDataset(Dataset[tuple[Tensor, Tensor, Tensor]]):
 
     def __getitem__(self, position: int) -> tuple[Tensor, Tensor, Tensor]:
         row_index = int(self.row_indices[position])
-        # Cached maps were validated once when the cache was built.
-        image = self.preprocessor(
-            self.wafer_map(position), validate=self.cached_maps is None
-        )
+        if self.cached_maps is not None:
+            # Already validated and letterboxed when the cache was built, so
+            # only the encoding is left.
+            categorical = self.cached_maps[position].to(torch.long)
+            image = encode_categorical_map(categorical, self.preprocessing_config)
+        else:
+            # 'raw' validated once at cache build; no cache validates per read.
+            image = self.preprocessor(
+                self.wafer_map(position),
+                validate=getattr(self, "raw_maps", None) is None,
+            )
         if self.augmentation is not None:
             # The class index lets a policy augment rare classes more heavily.
             image = self.augmentation(image, int(self.target_indices[position]))
