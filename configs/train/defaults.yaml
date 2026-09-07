@@ -35,6 +35,13 @@ data:
     # rather than noise level. `rotation` is the only one that resamples;
     # measured defect loss is under 1% and no wafer loses its pattern.
     name: null
+    # Chance a sample is touched at all -- NOT a strength dial. The identity is
+    # already one of the 8 group elements, so at 1.0 a sample is unchanged 12.5%
+    # of the time; at 0.5 it is unchanged 56%. Keep it at 1.0 for the exact
+    # subsets: that makes the training distribution uniform over the group, and
+    # the orientation the fab recorded has no special status. It is a real knob
+    # only for `rotation`, where it trades augmentation against keeping clean
+    # unresampled examples.
     probability: 1.0
     kwargs: {}            # rotation takes: {degrees: 180.0}
     # Optional: augment some classes more than others. Classes not listed keep

@@ -100,8 +100,16 @@ def dihedral_views(tensor: Tensor) -> list[Tensor]:
 class DihedralAugmentation:
     """Pick one symmetry per sample from a chosen subgroup of D4.
 
-    ``probability`` is the chance of augmenting at all; at 1.0 every sample is
-    drawn uniformly from ``transforms``, which includes the identity.
+    ``probability`` is the chance of augmenting at all, not a strength dial --
+    there is no weak version of a 90 degree rotation. The identity is already
+    one of the group elements, so at 1.0 a sample is unchanged 1/|transforms|
+    of the time; lowering it only adds more identity on top.
+
+    Leave it at 1.0 here. That makes the training distribution uniform over the
+    group, and therefore invariant under it, which is the point: a wafer has no
+    canonical orientation, so the one the fab recorded deserves no extra
+    weight. It is a meaningful knob only for ``RotationAugmentation``, which
+    resamples.
     """
 
     transforms: tuple[int, ...] = TRANSFORM_SUBSETS["dihedral8"]
