@@ -112,7 +112,7 @@ The evaluation pipeline can produce bootstrap confidence intervals; use them in 
 *Done when:* the final table reports intervals, and the test split has been evaluated exactly once, at the end.
 
 ### 9. Qualitative error analysis
-Look at what the models get wrong, not only how much. Inspect the most-confused pairs in the confusion matrix, plot a grid of misclassified wafers per class, project the learned embeddings with t-SNE or UMAP, and run Grad-CAM on a few examples to check the network attends to the defect rather than the wafer outline.
+Look at what the models get wrong, not only how much. Inspect the most-confused pairs in the confusion matrix, plot a grid of misclassified wafers per class, project the learned embeddings with t-SNE or UMAP, and run Grad-CAM to check the network attends to the defect rather than the wafer outline. Grad-CAM specifically is scheduled as a final step — see below — because it has to run on the models actually being presented.
 
 *Why:* the project brief explicitly asks for **qualitative** error analysis alongside the quantitative kind, and it is what turns a results table into an explanation. Cheap — it runs on predictions we already save.
 *Done when:* the report shows concrete failure cases with a stated hypothesis for each, not just metrics.
@@ -197,6 +197,36 @@ Adapt a backbone too large to fine-tune outright (a ViT, say) by training small 
 
 ---
 
+## Final steps, in order
+
+Do these last, once the models are trained. The order matters: every selection decision happens on validation, and the test split is opened exactly once, after all of it.
+
+1. **Pick the models to present** on validation macro-F1 with bootstrap intervals (item 8). Two models within ~0.04 are not separable — say so rather than declaring a winner.
+2. **Apply the free post-hoc wins** (item 13) — TTA over the 8 symmetries, per-class thresholds — measured on validation, keeping only what actually helps.
+3. **Evaluate the test split once**, for the chosen configuration only: `scripts/inference.py --checkpoint ... --split test --final-test-evaluation`.
+4. **Run Grad-CAM on the presented models.** Not on every experiment — on the two or three that go in the report and the slides.
+5. **Write up** the error analysis and limitations around what steps 3 and 4 show.
+
+### Grad-CAM, concretely
+
+Run it on each presented model, targeting the **last convolutional block** before global pooling (`encoder.layer4` on ResNet18, `features[-1]` on MobileNetV3, the final `Conv2d` on our own CNNs). Use `scripts/inference.py`'s saved `probabilities.csv` to choose examples rather than picking by hand.
+
+Sample per class, roughly six each:
+
+- **correct and confident** — what the model uses when it is right;
+- **wrong and confident** — the most informative failures;
+- **the confused pairs from the confusion matrix**, which on this dataset means `Loc` vs `Edge-Loc` above all, plus `Scratch`.
+
+What to look for, and what to write down:
+
+- Does the heat map sit on the **defective dies**, or on the **wafer rim**? Attention on the outline means the model is using wafer geometry as a proxy for the class — the same failure mode that makes `Edge-Ring` easy and `Loc` hard.
+- For `Loc` vs `Edge-Loc`, is attention on the cluster itself or on its **distance to the edge**? That distinction is the whole difference between the two labels.
+- For `Scratch`, is the thin line attended to at all, or has 64x64 downscaling already destroyed it? This connects directly to the downscaling limitation below, and is the one place a picture settles an argument that numbers cannot.
+
+Grad-CAM needs a backward pass, so it runs on the model, not on saved predictions — but it is seconds per image, and only a few dozen images are needed. No new training.
+
+*Done when:* the report shows a Grad-CAM panel for each presented model with a stated reading of what the model attends to, including at least one case where the attention explains a specific error.
+
 ## Known limitations to write up
 
 - Thin scratch patterns lose 30–91% of their defective pixels when a large wafer is downscaled to 64×64. This affects ~15% of that class. It is documented and is *not* the main reason that class scores poorly — it is rare and undertrained — but it belongs in the limitations section.
@@ -204,6 +234,6 @@ Adapt a backbone too large to fine-tune outright (a ViT, say) by training small 
 
 ## If time runs short
 
-Items **1–9** are the minimum for a submission that stands up to questions — item 9 included, since qualitative analysis is explicitly asked for in the brief. Items 10–15 are where the remaining accuracy is; **13 is the cheapest of all and should not be skipped**. Items 16–18 are stretch, and good presentation material either way.
+Items **1–9** are the minimum for a submission that stands up to questions — item 9 included, since qualitative analysis is explicitly asked for in the brief. The Grad-CAM step above is part of item 9 and is not optional for the same reason; it is also the cheapest slide material in the project. Items 10–15 are where the remaining accuracy is; **13 is the cheapest of all and should not be skipped**. Items 16–18 are stretch, and good presentation material either way.
 
 External benchmarks and why most published WM-811K numbers are not comparable to ours: `design-notes.md` §12. Read it before quoting anyone's accuracy.
