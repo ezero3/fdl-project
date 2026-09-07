@@ -15,6 +15,7 @@ is upstream: fewer per-item CPU operations, or more workers.
 from __future__ import annotations
 
 import argparse
+import os
 import time
 from pathlib import Path
 
@@ -85,17 +86,19 @@ def main() -> None:
         load_experiment_config(args.config).data.dataset_path
     )
 
-    settings = [
-        ("no aug,  8 workers", ["data.num_workers=8"]),
-        ("dihedral8, 8 workers", ["data.num_workers=8",
-                                  "data.augmentation.name=dihedral8"]),
-        ("dihedral8, 16 workers", ["data.num_workers=16",
-                                   "data.augmentation.name=dihedral8"]),
-        ("rotation,  8 workers", ["data.num_workers=8",
-                                  "data.augmentation.name=rotation"]),
-        ("rotation, 16 workers", ["data.num_workers=16",
-                                  "data.augmentation.name=rotation"]),
-    ]
+    # The VM has 8 cores, and `num_workers=8` leaves none for the main
+    # process -- which still has to run the training loop, dispatch to the
+    # GPU and collate. Under-subscribing may beat the core count; heavy
+    # over-subscription usually just adds context switching. 12 is included
+    # only because workers spend some time blocked on IPC rather than
+    # computing, which is the one case where it can help.
+    cores = os.cpu_count() or 8
+    counts = sorted({4, cores - 2, cores, cores + 4})
+    settings = [(f"no aug,    {n:2} workers", [f"data.num_workers={n}"])
+                for n in counts]
+    settings += [(f"rotation,  {n:2} workers",
+                  [f"data.num_workers={n}", "data.augmentation.name=rotation"])
+                 for n in counts]
 
     print(f"{'setting':24} {'loader':>9} {'full':>9} {'implied GPU':>12} {'loader %':>9}")
     for label, overrides in settings:
@@ -108,7 +111,8 @@ def main() -> None:
     print("  1. move the one-hot encoding to the GPU (~50% of per-item CPU cost,")
     print("     and 12x less data over PCIe: uint8 categorical vs float32 3-channel)")
     print("  2. cache the letterboxed uint8 map (~40% more; 496 MB at 64x64)")
-    print("  3. more workers, if the numbers above show it still helps")
+    print(f"  3. worker count -- this machine has {os.cpu_count()} cores, and the main")
+    print("     process needs one of them, so the best setting may be below that")
 
 
 if __name__ == "__main__":
