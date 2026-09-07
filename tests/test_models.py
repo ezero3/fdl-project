@@ -15,7 +15,7 @@ from fdl_project.config.registry import available_models, build_model
 from fdl_project.constants import NUM_CLASSES
 from fdl_project.models import CBAM, WaferDilatedCNN, count_trainable_parameters
 
-OWN_MODELS = ("baseline_cnn", "resnet_style", "inception_style", "dilated_style", "densenet_style")
+OWN_MODELS = ("baseline_cnn", "resnet_style", "inception_style", "dilated_style", "densenet_style", "convnext_style")
 CONVOLUTIONAL = OWN_MODELS  # everything except the transformer
 
 
@@ -23,7 +23,7 @@ def test_our_models_are_named_apart_from_the_pretrained_ones() -> None:
     """`*_style` is ours from scratch; a plain name is torchvision weights."""
 
     names = available_models()
-    assert {"resnet_style", "inception_style", "dilated_style", "densenet_style", "vit_style"} <= set(names)
+    assert {"resnet_style", "inception_style", "dilated_style", "densenet_style", "vit_style", "convnext_style"} <= set(names)
     assert {"resnet18", "mobilenet_v3_small", "vit_b_16"} <= set(names)
     assert "resnet_style" != "resnet18"
 
@@ -42,7 +42,7 @@ def test_every_model_shares_one_interface(name: str) -> None:
         model(torch.zeros(2, 3, 64, 64, dtype=torch.long))
 
 
-@pytest.mark.parametrize("name", ("resnet_style", "inception_style", "dilated_style", "densenet_style"))
+@pytest.mark.parametrize("name", ("resnet_style", "inception_style", "dilated_style", "densenet_style", "convnext_style"))
 def test_convolutional_models_are_resolution_agnostic(name: str) -> None:
     """Global pooling, so the same model runs at the pretrained geometry."""
 
@@ -50,7 +50,7 @@ def test_convolutional_models_are_resolution_agnostic(name: str) -> None:
     assert model(torch.rand(2, 3, 224, 224)).shape == (2, NUM_CLASSES)
 
 
-@pytest.mark.parametrize("name", ("resnet_style", "inception_style", "dilated_style", "densenet_style"))
+@pytest.mark.parametrize("name", ("resnet_style", "inception_style", "dilated_style", "densenet_style", "convnext_style"))
 def test_convolutional_models_accept_attention(name: str) -> None:
     attended = build_model(name, attention="cbam")
 
@@ -185,3 +185,48 @@ def test_pretrained_models_expose_encoder_and_head_for_param_groups() -> None:
         prefixes = {parameter.split(".")[0] for parameter, _ in model.named_parameters()}
         assert prefixes <= {"encoder", "head", "attention"}
         assert isinstance(model.head, nn.Module)
+
+
+# -- convnext --------------------------------------------------------------
+
+
+def test_convnext_block_uses_a_depthwise_kernel() -> None:
+    """A 7x7 depthwise kernel costs about what a 3x3 dense one does, which is
+    what makes the large receptive field affordable."""
+
+    from fdl_project.models.convnext import ConvNeXtBlock
+
+    block = ConvNeXtBlock(32)
+
+    assert block.depthwise.groups == 32
+    assert block.depthwise.kernel_size == (7, 7)
+    assert block.expand.out_channels == 32 * 4  # inverted bottleneck
+
+
+def test_convnext_refuses_the_reference_patchify_stem() -> None:
+    """A 4x4 stride-4 stem drops 94% of a 64x64 map before the first block,
+    taking a one-die-wide Scratch with it."""
+
+    with pytest.raises(ValueError, match="stem_stride"):
+        build_model("convnext_style", stem_stride=4)
+
+
+def test_stochastic_depth_is_a_training_only_identity() -> None:
+    from fdl_project.models.convnext import StochasticDepth
+
+    layer = StochasticDepth(0.5)
+    inputs = torch.ones(64, 4, 2, 2)
+
+    layer.eval()
+    assert torch.equal(layer(inputs), inputs)
+
+
+def test_layer_scale_starts_each_block_near_the_identity() -> None:
+    """A deep stack begins close to the identity and learns how much to add."""
+
+    from fdl_project.models.convnext import ConvNeXtBlock
+
+    block = ConvNeXtBlock(16).eval()
+    inputs = torch.rand(2, 16, 8, 8)
+
+    assert torch.allclose(block(inputs), inputs, atol=1e-3)

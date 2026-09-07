@@ -1,14 +1,19 @@
 """Label-preserving augmentation for wafer maps.
 
-Only the **dihedral group of order 8** is used: the four rotations by multiples
-of 90 degrees, and each of those mirrored. These are index permutations, so
-they introduce no interpolation, produce no fractional cell states, and cannot
-turn one class into another.
+The safe default is the **dihedral group of order 8**: the four rotations by
+multiples of 90 degrees, and each of those mirrored. These are index
+permutations, so they introduce no interpolation, produce no fractional cell
+states, and cannot turn one class into another.
 
-What is deliberately excluded, and why:
+**Free-angle rotation** is also offered, and composes with the group
+(`dihedral8_rotation`). It resamples, so it is not the default -- but the
+original warning here, that it would destroy thin `Scratch` patterns, was
+measured and proved wrong at the resolution augmentation actually runs at:
+defect counts are preserved, no wafer loses its pattern, and `Scratch`
+fragments less than `Loc` or `Random`. See `docs/ROADMAP.md` item 10.
 
-* **Free-angle rotation** resamples the grid. A one-die-wide `Scratch` breaks
-  into a dotted line or disappears, while the label still says `Scratch`.
+What is still deliberately excluded, and why:
+
 * **Translation** moves a localized defect toward the wafer edge, which is
   exactly the difference between `Loc` and `Edge-Loc`. The image becomes a
   different class while keeping the old label.
@@ -164,13 +169,16 @@ class RotationAugmentation:
     Whether that matters is a measured question, not an assumed one; see
     `docs/reports/` for what it does to `Scratch`.
 
-    ``fill`` sets the corners the rotation exposes. It defaults to the
-    background channel, which is the only valid one-hot for "no die here".
+    ``fill`` sets the corners the rotation exposes. Leave it ``None`` for the
+    one-hot convention (background channel set); pass
+    ``preprocessing.background_fill(config)`` for any other encoding, or the
+    corners will decode to a state that does not exist.
     """
 
     degrees: float = 180.0
     probability: float = 1.0
     class_probabilities: tuple[float, ...] | None = None
+    fill: tuple[float, ...] | None = None
 
     def __post_init__(self) -> None:
         if self.class_probabilities is not None:
@@ -204,10 +212,16 @@ class RotationAugmentation:
         if not _should_augment(self.probability, None, class_index):
             return tensor
         angle = float(torch.empty(()).uniform_(-self.degrees, self.degrees))
-        # One-hot channel 0 is "no die", so filling it is the only encoding of
-        # the empty corners a rotation exposes. Filling every channel with 0
-        # would produce a cell belonging to no state at all.
-        fill = [1.0] + [0.0] * (tensor.shape[0] - 1)
+        fill = (
+            list(self.fill)
+            if self.fill is not None
+            else [1.0] + [0.0] * (tensor.shape[0] - 1)
+        )
+        if len(fill) != tensor.shape[0]:
+            raise ValueError(
+                f"fill has {len(fill)} channels but the tensor has "
+                f"{tensor.shape[0]}."
+            )
         return transforms_functional.rotate(
             tensor,
             angle,
@@ -244,6 +258,29 @@ def _should_augment(
     return float(torch.rand(())) < chance
 
 
+@dataclass(frozen=True)
+class ComposedAugmentation:
+    """Apply several augmentations in order, to one sample.
+
+    The motivating case is `dihedral8_rotation`: take an exact symmetry of the
+    square, then rotate by a free angle. The group alone can only ever produce
+    8 views of a wafer; composing a continuous rotation onto it makes the set
+    of reachable views infinite, which matters most for the rare classes the
+    sampler is already drawing dozens of times an epoch.
+    """
+
+    stages: tuple[object, ...]
+
+    def __post_init__(self) -> None:
+        if not self.stages:
+            raise ValueError("ComposedAugmentation needs at least one stage.")
+
+    def __call__(self, tensor: Tensor, class_index: int | None = None) -> Tensor:
+        for stage in self.stages:
+            tensor = stage(tensor, class_index)
+        return tensor
+
+
 def _dihedral_factory(name: str):
     def build(**kwargs) -> DihedralAugmentation:
         return DihedralAugmentation(transforms=TRANSFORM_SUBSETS[name], **kwargs)
@@ -251,10 +288,51 @@ def _dihedral_factory(name: str):
     return build
 
 
+def _composed_factory(subset: str):
+    def build(
+        *,
+        probability: float = 1.0,
+        degrees: float = 180.0,
+        rotation_probability: float = 0.5,
+        fill: tuple[float, ...] | None = None,
+        class_probabilities: tuple[float, ...] | None = None,
+        **kwargs,
+    ) -> ComposedAugmentation:
+        if class_probabilities is not None:
+            # Inherited from the rotation stage: uneven resampling leaks the
+            # label. See RotationAugmentation.__post_init__.
+            raise ValueError(
+                f"Per-class probabilities are not allowed for "
+                f"'{subset}_rotation': the rotation stage resamples, so "
+                "applying it unevenly across classes leaks the label."
+            )
+        # The group transform is free and exact, so it always applies. The
+        # rotation stage resamples, so it is applied to a fraction of samples:
+        # that keeps clean, unresampled examples in the training distribution
+        # while still making the reachable view set continuous.
+        return ComposedAugmentation(
+            stages=(
+                DihedralAugmentation(
+                    transforms=TRANSFORM_SUBSETS[subset],
+                    probability=probability,
+                    **kwargs,
+                ),
+                RotationAugmentation(
+                    degrees=degrees, probability=rotation_probability, fill=fill
+                ),
+            )
+        )
+
+    return build
+
+
 #: Name -> factory. Augmentation is train-only; see WM811KDataset.
 AUGMENTATION_REGISTRY = {
     name: _dihedral_factory(name) for name in TRANSFORM_SUBSETS
-} | {"rotation": RotationAugmentation}
+} | {
+    "rotation": RotationAugmentation,
+    "dihedral8_rotation": _composed_factory("dihedral8"),
+}
 
 
 def build_augmentation(

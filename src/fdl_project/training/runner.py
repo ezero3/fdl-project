@@ -22,6 +22,7 @@ from fdl_project.config.registry import build_model
 from fdl_project.config.schema import ExperimentConfig
 from fdl_project.constants import class_encoding_metadata
 from fdl_project.data.augmentation import build_augmentation
+from fdl_project.data.preprocessing import background_fill
 from fdl_project.data.datasets import (
     WM811KDataset,
     create_dataloader,
@@ -104,6 +105,18 @@ def _subset_dataset(dataset: WM811KDataset, limit: int, seed: int) -> WM811KData
     return dataset.select(selected)
 
 
+#: Augmentations that expose new corners and therefore need a fill value.
+_FILLING_AUGMENTATIONS = frozenset({"rotation", "dihedral8_rotation"})
+
+
+def _rotation_fill(config: ExperimentConfig) -> dict[str, tuple[float, ...]]:
+    if config.data.augmentation.name not in _FILLING_AUGMENTATIONS:
+        return {}
+    if "fill" in config.data.augmentation.kwargs:
+        return {}
+    return {"fill": tuple(background_fill(config.data.preprocessing))}
+
+
 def build_datasets(
     config: ExperimentConfig, dataframe: pd.DataFrame | None = None
 ) -> tuple[WM811KDataset, WM811KDataset]:
@@ -126,6 +139,9 @@ def build_datasets(
                     class_probabilities=dict(
                         config.data.augmentation.class_probabilities
                     ),
+                    # Corners exposed by a free-angle rotation must be filled
+                    # with a value valid for this encoding, not assumed one-hot.
+                    **_rotation_fill(config),
                     **dict(config.data.augmentation.kwargs),
                 )
                 if split_name == "train"
@@ -170,6 +186,7 @@ def run_experiment(
     resume: str | None = None,
     device: str | None = None,
     bootstrap_resamples: int = 1000,
+    dataframe: pd.DataFrame | None = None,
 ) -> RunResult:
     """Train, select on validation, and write the standard artifacts.
 
@@ -180,7 +197,9 @@ def run_experiment(
     seed_everything(config.seed)
     device_object = resolve_device(device or config.trainer.device)
 
-    train_dataset, validation_dataset = build_datasets(config)
+    # A sweep passes the source table in so the 2 GB pickle is read once for
+    # the whole run set rather than once per arm.
+    train_dataset, validation_dataset = build_datasets(config, dataframe)
     train_loader, validation_loader = build_dataloaders(
         config, train_dataset, validation_dataset
     )

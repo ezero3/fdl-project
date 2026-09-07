@@ -30,7 +30,7 @@ These are enforced in code and by specs; violating them silently corrupts cross-
 
 **Data splits** (`data/splits/`): a group-aware (by `lotName`) 70/20/10 partition generated once by `notebooks/02_split_data.ipynb` with seed 86. The `.npy` files hold *row indices* into the pickle, not copies of the maps. Never regenerate, re-shuffle, or derive a different split per model — load the persisted indices. Unlabeled maps belonging to validation/test lots are in `unlabeled_excluded_indices.npy` and are ineligible for training. Rationale in `split_strategy.md` / `docs/reports/split_strategy.md`.
 
-**Evaluation protocol** (`src/fdl_project/evaluation.py`): validation drives every selection decision (architecture, hyperparameters, early stopping, loss, sampling, augmentation); the test split stays frozen until the final comparison. Macro-F1 is the primary metric because `none` dominates. Validation/test are evaluated at their natural distribution — no augmentation, resampling, or reordering. Every prediction retains its source dataset row index for error traceability.
+**Evaluation protocol** (`src/fdl_project/evaluation/`): validation drives every selection decision (architecture, hyperparameters, early stopping, loss, sampling, augmentation); the test split stays frozen until the final comparison. Macro-F1 is the primary metric because `none` dominates. Validation/test are evaluated at their natural distribution — no augmentation, resampling, or reordering. Every prediction retains its source dataset row index for error traceability.
 
 **Wafer maps are categorical, not images**: cells are `0` = background/no die, `1` = functional die, `2` = defective die. Transforms (resize, interpolation, normalization) must not blend these into meaningless fractional states. Maps have 632 distinct shapes, so padding/resizing choices matter.
 
@@ -40,10 +40,10 @@ These are enforced in code and by specs; violating them silently corrupts cross-
 
 - `constants.py` — the frozen class encoding plus encode/decode/validate helpers. Everything else depends on it.
 - `config/` — `schema.py` (frozen dataclasses, one per config section, validated in `__post_init__`), `loader.py` (YAML deep-merged over `configs/train/defaults.yaml`; **unknown keys raise**), `registry.py` (name → builder tables for models, optimizers, schedules). No Hydra — considered and rejected in `docs/design-notes.md` §12.
-- `data/` — `datasets.py`, `preprocessing.py`, `imbalance.py`.
-- `models/` — `baseline_cnn.py` and `pretrained.py`. Pretrained backbones expose exactly `encoder` and `head` so config regexes like `^encoder\.` stay stable across architectures.
+- `data/` — `datasets.py`, `preprocessing.py`, `imbalance.py`, `augmentation.py` (dihedral subsets + free-angle rotation; train splits only — passing it to validation/test raises).
+- `models/` — ours from scratch (`baseline_cnn.py`, `wafer_resnet.py`, `inception.py`, `dilated.py`, `densenet.py`, `vit.py`) plus `pretrained.py` and `attention.py` (CBAM). Every model exposes exactly `encoder` and `head` so config regexes like `^encoder\.` stay stable across architectures. Registry names ending `_style` are ours; a plain torchvision name (`resnet18`) means ImageNet weights. Token models (`vit_style`, `vit_b_16`, `vit_b_32`, `swin_t`) refuse `attention: cbam` — they are already attention models.
 - `training/` — `seed.py`, `optim.py`, `checkpoint.py`, `callbacks.py`, `loop.py`, plus `runner.py`/`inference.py` which wire a config into a complete run.
-- `evaluation/` — `metrics.py` (collect → evaluate), `bootstrap.py` (percentile CIs), `artifacts.py` (`save_evaluation_results`).
+- `evaluation/` — `metrics.py` (collect → evaluate), `bootstrap.py` (percentile CIs), `artifacts.py` (`save_evaluation_results`), `postprocessing.py` (TTA, per-class decision weights tuned on validation only).
 - `analysis/` — finished offline studies (`preprocessing_analysis.py`, `imbalance_experiment.py`).
 
 The evaluation flow: `collect_predictions` (model.eval + `torch.inference_mode`, sample-weighted mean loss, CPU collection) → `evaluate_predictions` (metrics, per-class table, absolute and row-normalized confusion matrices, always full nine-class shape even for unpredicted classes) → `evaluate_model` (both) → `save_evaluation_results` (writes `metrics.json`, `per_class_metrics.csv`, `predictions.csv`, `confusion_matrix.png`, `confusion_matrix_normalized.png` under `output/<root>/<run_name>/`, refusing to overwrite without `overwrite=True`).
@@ -57,9 +57,19 @@ uv run python scripts/train.py <config> --override trainer.max_epochs=2 --device
 uv run python scripts/inference.py --checkpoint output/runs/<name>/best_model.pt --split validation
 ```
 
-Artifacts go to `output/runs/<config name>/`, checkpoints to `<checkpoint.directory>/<config name>/`. `trainer.max_epochs` defaults to **40**; the 4-epoch budget lives only inside `analysis/imbalance_experiment.py`, where it is a deliberate screening budget. Call `seed_everything` before creating any CUDA tensor — it sets `CUBLAS_WORKSPACE_CONFIG`, which has no effect once CUDA is initialized.
+Artifacts go to `output/runs/<config name>/`, checkpoints to `<checkpoint.directory>/<config name>/`. `trainer.max_epochs` defaults to **40**; the 4-epoch budget lives only inside `analysis/imbalance_experiment.py`, where it is a deliberate screening budget. `batch_size` (256), `num_workers` (8) and the AdamW learning rate (7e-4) come from measurements in `docs/phase0-results.md` on a Colab T4 — re-measure on different hardware rather than assuming them. Training runs fp16 AMP; **validation runs fp32** (no autocast in `collect_predictions`). Call `seed_everything` before creating any CUDA tensor — it sets `CUBLAS_WORKSPACE_CONFIG`, which has no effect once CUDA is initialized.
 
 Two invariants worth restating because they are easy to break from a config: a `param_groups` pattern that matches no parameter **raises** rather than silently folding into the default group, and `scripts/inference.py` refuses `--split test` without `--final-test-evaluation`.
+
+## Planning documents
+
+Read these before proposing experiments; they exist so decisions are not re-derived.
+
+- `docs/ROADMAP.md` — the task list, P0–P3, with what is done marked inline.
+- `docs/design-notes.md` — why each choice was made. Read before changing one.
+- `docs/training-plan.md` — the four phases: measure cost, pick a test-bed, sweep the pipeline on one model, then compare architectures on the settled pipeline. The rule everything follows: **anything that is not the model is compared on one fixed cheap model.**
+- `docs/experiment-grid.md` — every model × every option the pipeline can express, as fillable grids. The single page to open when choosing what to run next.
+- `docs/phase0-results.md` — measured epoch costs, batch/worker curves, GPU guidance.
 
 ## Repository conventions
 

@@ -1,0 +1,28 @@
+# ConvNeXt-style: a CNN rebuilt with transformer design choices -- large
+# depthwise kernels, inverted bottleneck, LayerNorm, GELU, LayerScale.
+#
+# Its question is sharper than vit_style's. Where vit_style asks whether
+# attention beats convolution here, this asks how much of a transformer's
+# advantage is attention at all, and how much is the surrounding design.
+# Compare it against resnet_style: same operator, modernized everything else.
+name: convnext-style-64
+
+model:
+  name: convnext_style
+  kwargs:
+    widths: [32, 64, 128]
+    blocks_per_stage: [2, 2, 2]
+    # The reference 4x4 stride-4 patchify would discard 94% of a 64x64 map
+    # before the first block. Stride 2 is the same first step densenet_style
+    # and inception_style take, and measured 3.8x faster than stride 1 at
+    # identical parameter count.
+    stem_stride: 2
+    stochastic_depth: 0.05
+
+optimizer:
+  name: adamw
+  kwargs:
+    lr: 7.0e-4
+    # ConvNeXt is trained with far heavier weight decay than a ResNet; the
+    # LayerScale and stochastic depth are the rest of that regularization.
+    weight_decay: 0.05
