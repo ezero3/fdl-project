@@ -101,6 +101,14 @@ def parse_args() -> argparse.Namespace:
                         help="Repeat arms that already have results.")
     parser.add_argument("--bootstrap-resamples", type=int, default=1000)
     parser.add_argument(
+        "--tag", default="",
+        help=(
+            "Suffix added to every run name, so a repeat of the same arms "
+            "under a different baseline gets its own results rather than "
+            "being skipped as already done. E.g. --tag aug."
+        ),
+    )
+    parser.add_argument(
         "--override", action="append", default=[], metavar="KEY=VALUE",
         help=(
             "Applied to every arm, after the arm's own overrides. For things "
@@ -188,10 +196,11 @@ def main() -> None:
     # The model is part of every run name: `baseline_cnn-dihedral8-s86` says
     # what it is from the directory listing alone, without opening the CSV.
     model = load_experiment_config(args.config).model.name
+    tag = f"-{args.tag}" if args.tag else ""
     done = set() if args.rerun else completed_runs()
     planned = [
         (arm, seed) for arm in selected for seed in args.seeds
-        if args.rerun or f"{model}-{arm.name}-s{seed}" not in done
+        if args.rerun or f"{model}-{arm.name}{tag}-s{seed}" not in done
     ]
     if not planned:
         print("Nothing to do: every selected arm already has a result.")
@@ -207,7 +216,7 @@ def main() -> None:
     )
 
     for index, (arm, seed) in enumerate(planned, start=1):
-        run = f"{model}-{arm.name}-s{seed}"
+        run = f"{model}-{arm.name}{tag}-s{seed}"
         print(f"[{index}/{len(planned)}] stage {arm.stage}  {run}  -- {arm.note}")
         started = time.monotonic()
         try:
@@ -227,7 +236,8 @@ def main() -> None:
             )
             macro = result.bootstrap.aggregate.set_index("metric").loc["macro_f1"]
             record({
-                "run": run, "stage": arm.stage, "arm": arm.name, "seed": seed,
+                "run": run, "stage": arm.stage, "arm": arm.name,
+                "tag": args.tag, "seed": seed,
                 "macro_f1": round(float(macro.point_estimate), 4),
                 "ci_lower": round(float(macro.ci_lower), 4),
                 "ci_upper": round(float(macro.ci_upper), 4),
@@ -244,7 +254,8 @@ def main() -> None:
         except Exception as error:  # keep going; one bad arm must not end the sweep
             LOGGER.exception("arm %s failed: %s", run, error)
             record({
-                "run": run, "stage": arm.stage, "arm": arm.name, "seed": seed,
+                "run": run, "stage": arm.stage, "arm": arm.name,
+                "tag": args.tag, "seed": seed,
                 "macro_f1": "", "ci_lower": "", "ci_upper": "", "best_epoch": "",
                 "epochs_run": "", "minutes": round((time.monotonic() - started) / 60, 1),
                 "overrides": " ".join(arm.overrides), "note": f"FAILED: {error}",
