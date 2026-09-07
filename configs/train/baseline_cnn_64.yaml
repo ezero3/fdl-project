@@ -1,0 +1,15 @@
+# The small from-scratch CNN at the project's default geometry.
+# This is the reference run every other config is compared against.
+name: baseline-cnn-64
+
+model:
+  name: baseline_cnn
+  kwargs:
+    dropout: 0.2
+
+scheduler:
+  name: cosine_with_warmup
+  interval: epoch
+  kwargs:
+    warmup_epochs: 2
+    min_lr_ratio: 0.01

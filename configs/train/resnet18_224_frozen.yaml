@@ -1,0 +1,26 @@
+# The cheap comparison point: the same backbone with the encoder frozen.
+# Trains in minutes and shows how much full fine-tuning actually buys.
+name: resnet18-224-frozen
+
+data:
+  preprocessing:
+    target_size: [224, 224]
+
+model:
+  name: resnet18
+  kwargs:
+    pretrained: true
+    freeze_encoder: true
+
+optimizer:
+  name: adamw
+  kwargs:
+    lr: 1.0e-3
+    weight_decay: 1.0e-4
+
+trainer:
+  batch_size: 128
+  max_epochs: 15
+  early_stopping:
+    patience: 3
+    min_epochs: 3

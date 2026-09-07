@@ -1,0 +1,21 @@
+# A two-epoch run on a small slice, for checking the pipeline end to end
+# before spending GPU time. Not a result.
+name: smoke-test
+
+data:
+  num_workers: 0
+  pin_memory: false
+  subset: 2000
+
+trainer:
+  max_epochs: 2
+  batch_size: 64
+  amp: false
+  device: cpu
+  early_stopping:
+    patience: 1
+    min_epochs: 1
+
+checkpoint:
+  directory: trained-models/checkpoints
+  resume: never
