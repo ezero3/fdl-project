@@ -1,6 +1,6 @@
 # Focal at gamma 1.0 plus the sampler: the least-cancelling combination of
 # the four, if the interference argument in v25_focal_g2_sampler is right.
-name: v25-focal-g1-sampler
+name: baseline_v2-rotation-focal_g1-sampler
 
 model:
   name: baseline_v2

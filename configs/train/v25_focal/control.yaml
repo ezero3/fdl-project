@@ -2,7 +2,7 @@
 # Every other arm here differs from this by the loss alone, so a difference
 # is attributable. Comparing against the old baseline_cnn numbers would not
 # be: both the model and the augmentation changed since.
-name: v25-control
+name: baseline_v2-rotation-sampler
 
 model:
   name: baseline_v2

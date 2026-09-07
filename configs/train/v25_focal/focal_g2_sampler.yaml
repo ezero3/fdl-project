@@ -5,7 +5,7 @@
 # -- so focal's suppression lands hardest on exactly what the sampler was
 # promoting. They can partly cancel rather than compound. That is the
 # hypothesis this arm tests, and why the control matters.
-name: v25-focal-g2-sampler
+name: baseline_v2-rotation-focal_g2-sampler
 
 model:
   name: baseline_v2

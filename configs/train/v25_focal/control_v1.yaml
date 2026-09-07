@@ -1,0 +1,21 @@
+# The same control on the *original* model. baseline_v2 has no prior runs, so
+# without this the model change is confounded with everything else in the
+# series.
+#
+# This is exactly the phase-2 arm that scored 0.8800 -- baseline_cnn +
+# rotation + inverse-sqrt sampler -- so it doubles as a check that the
+# retuned defaults and the GPU rotation path reproduce that number.
+name: baseline_cnn-rotation-sampler
+
+model:
+  name: baseline_cnn
+  kwargs: {dropout: 0.2}
+
+data:
+  augmentation:
+    name: rotation
+    probability: 0.5
+    kwargs: {degrees: 180.0}
+
+imbalance:
+  preset: inverse_sqrt_sampler

@@ -6,7 +6,7 @@
 # mechanisms on paper. It is measured because rotation changed the regime:
 # the model no longer memorises the training set, so loss shaping may matter
 # more than it did against an overfitting control.
-name: v25-focal-g2
+name: baseline_v2-rotation-focal_g2
 
 model:
   name: baseline_v2

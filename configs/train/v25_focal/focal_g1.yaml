@@ -4,7 +4,7 @@
 # with focal here is that it suppresses gradient from examples the model has
 # learned -- and with rare classes that is a small set to begin with. gamma 1
 # keeps more of that signal while still favouring hard examples.
-name: v25-focal-g1
+name: baseline_v2-rotation-focal_g1
 
 model:
   name: baseline_v2
