@@ -67,7 +67,9 @@ Write model weights, optimizer state, epoch number and RNG state to Drive at the
 ## P1 — Needed for a submission that holds up
 
 ### 5. Three models
-Two built by us, one pretrained, per the course requirement.
+Two built by us, one pretrained.
+
+**Not a course requirement — a choice we made.** The brief only says the solution "cannot rely exclusively on" pretrained models and that the group "must develop and train a meaningful component", listing *"developing a model from scratch and comparing it with a pretrained solution"* as acceptable. One from-scratch model plus one fine-tuned pretrained model already satisfies that. The second own architecture is worth having because it makes the comparison a statement about design rather than about one lucky model — but if time runs short, it is the first thing here that can go.
 
 - **From scratch:** the existing small CNN is the baseline; a second, deeper design is one of ours.
 - **Pretrained:** MobileNetV3 or ResNet18, **fine-tuned or built upon — not used as a frozen feature extractor.** Train the whole network, but give the pretrained encoder a much smaller learning rate than the newly initialised head (10–100× smaller is the usual range). Freezing the encoder is also worth one run as a cheap, fast baseline — it trains in minutes and tells you how much the fine-tuning actually buys — but it is a comparison point, not the plan.
