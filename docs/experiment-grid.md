@@ -20,6 +20,7 @@ filling 3.5% of its canvas, resize distorts 17.6× more. `amp: true` throughout.
 | `baseline_cnn` | ours | 157k | 12.8s | ✓ | test-bed for the sweep |
 | `dilated_style` | ours | 298k | 168s | ✓ | context, no downsampling |
 | `densenet_style` | ours | 304k | 164s | ✓ | feature reuse |
+| `convnext_style` | ours | 414k | — | ✓ | conv operator, transformer design |
 | `inception_style` | ours | 799k | — | ✓ | parallel kernel sizes |
 | `vit_style` | ours | 2.72M | — | — | no conv prior |
 | `resnet_style` | ours | 2.83M | — | ✓ | residual depth |
@@ -43,7 +44,10 @@ where nothing resamples.
 |---|---|---|---|---|
 | `baseline_cnn` | | | | |
 | `dilated_style` | | | | |
-| `densenet_style` | | | | |
+| `densenet_style` | | |
+| `convnext_style` | | | |
+| `convnext_style` | | | | |
+| `convnext_style` | | | | |
 | `inception_style` | | | | |
 | `vit_style` | | | | |
 | `resnet_style` | | | | |
@@ -78,7 +82,9 @@ so would answer a narrower question: `rotations` (C4) and `flips` (Klein four-gr
 |---|---|---|---|
 | `baseline_cnn` | | | |
 | `dilated_style` | | | |
-| `densenet_style` | | | |
+| `densenet_style` | | |
+| `convnext_style` | | | |
+| `convnext_style` | | | |
 | `vit_style` | | | |
 | `resnet18` | | | |
 | `vit_b_16` | | | |
@@ -114,6 +120,7 @@ Geometry is fixed at letterbox; only resolution varies, and it does not apply un
 | `baseline_cnn` | ▪ | | global pooling — resolution-agnostic |
 | `dilated_style` | ▪ | | same; but full-resolution stack, so 224² is costly |
 | `densenet_style` | ▪ | | same |
+| `convnext_style` | ▪ | | same |
 | `inception_style` | ▪ | | same |
 | `resnet_style` | ▪ | | same |
 | `vit_style` | ▪ | rebuild | positional table sized at construction; 784 tokens at patch 8 |
@@ -138,6 +145,7 @@ combination raises.
 | `baseline_cnn` | | ✗ | | — |
 | `dilated_style` | | ✗ | | — |
 | `densenet_style` | | ✗ | | — |
+| `convnext_style` | | ✗ | | — |
 | `inception_style` | | ✗ | | — |
 | `vit_style` | | ✗ | | — |
 | `resnet_style` | | ✗ | | — |
@@ -178,6 +186,7 @@ a defect is "twice" a functional die. That is the trade being measured, not an o
 | `baseline_cnn` | | |
 | `dilated_style` | | |
 | `densenet_style` | | |
+| `convnext_style` | | |
 | `inception_style` | | |
 | `resnet_style` | | |
 | `resnet18` | | |
@@ -215,7 +224,10 @@ Fitted on validation, reused unchanged for the single test evaluation.
 |---|---|---|---|---|
 | `baseline_cnn` | | | | |
 | `dilated_style` | | | | |
-| `densenet_style` | | | | |
+| `densenet_style` | | |
+| `convnext_style` | | | |
+| `convnext_style` | | | | |
+| `convnext_style` | | | | |
 | `inception_style` | | | | |
 | `vit_style` | | | | |
 | `resnet_style` | | | | |
