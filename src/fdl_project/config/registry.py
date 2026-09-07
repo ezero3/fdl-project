@@ -43,6 +43,12 @@ def _baseline_cnn(**kwargs: Any) -> nn.Module:
     return BaselineCNN(**kwargs)
 
 
+def _wafer_resnet(**kwargs: Any) -> nn.Module:
+    from fdl_project.models.wafer_resnet import WaferResNet
+
+    return WaferResNet(**kwargs)
+
+
 def _pretrained(architecture: str) -> ModelBuilder:
     def build(**kwargs: Any) -> nn.Module:
         from fdl_project.models.pretrained import PretrainedClassifier
@@ -54,6 +60,7 @@ def _pretrained(architecture: str) -> ModelBuilder:
 
 MODEL_REGISTRY: dict[str, ModelBuilder] = {
     "baseline_cnn": _baseline_cnn,
+    "wafer_resnet": _wafer_resnet,
     "resnet18": _pretrained("resnet18"),
     "resnet34": _pretrained("resnet34"),
     "mobilenet_v3_small": _pretrained("mobilenet_v3_small"),

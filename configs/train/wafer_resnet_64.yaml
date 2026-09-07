@@ -1,0 +1,30 @@
+# Our second from-scratch model: a residual CNN sized for 64x64 wafer maps.
+# ~2.8M parameters, against ~157k for the baseline CNN.
+name: wafer-resnet-64
+
+model:
+  name: wafer_resnet
+  kwargs:
+    widths: [32, 64, 128, 256]
+    blocks_per_stage: 2
+    dropout: 0.4
+    head_dropout: 0.3
+    # attention: cbam        # item 11: run with and without, nothing else changed
+
+optimizer:
+  name: adamw
+  kwargs:
+    lr: 1.0e-3
+    weight_decay: 1.0e-4
+
+scheduler:
+  name: cosine_with_warmup
+  interval: epoch
+  kwargs:
+    warmup_epochs: 3
+    min_lr_ratio: 0.01
+
+trainer:
+  # Deeper and wider than the baseline, so the batch drops to fit a T4
+  # alongside activations at 64x64.
+  batch_size: 256

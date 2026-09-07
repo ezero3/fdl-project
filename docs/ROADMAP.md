@@ -71,7 +71,9 @@ Two built by us, one pretrained.
 
 **Not a course requirement — a choice we made.** The brief only says the solution "cannot rely exclusively on" pretrained models and that the group "must develop and train a meaningful component", listing *"developing a model from scratch and comparing it with a pretrained solution"* as acceptable. One from-scratch model plus one fine-tuned pretrained model already satisfies that. The second own architecture is worth having because it makes the comparison a statement about design rather than about one lucky model — but if time runs short, it is the first thing here that can go.
 
-- **From scratch:** the existing small CNN is the baseline; a second, deeper design is one of ours.
+- **From scratch:** `baseline_cnn` (~157k parameters) and `wafer_resnet` (~2.8M), both ours. The second is a residual CNN — `configs/train/wafer_resnet_64.yaml`.
+
+  Two things about it are fitted to this data rather than copied from a stock ResNet. Its **stem is a 3x3 stride-1 convolution with no max-pool**: a torchvision-style 7x7 stride-2 stem plus pooling drops 64x64 to 16x16 *before the first residual block*, and a one-die-wide `Scratch` or a small `Loc` is exactly what vanishes there. And `widths`/`blocks_per_stage` are config fields, so depth and width are tunable without touching the class.
 - **Pretrained:** MobileNetV3 or ResNet18, **fine-tuned or built upon — not used as a frozen feature extractor.** Train the whole network, but give the pretrained encoder a much smaller learning rate than the newly initialised head (10–100× smaller is the usual range). Freezing the encoder is also worth one run as a cheap, fast baseline — it trains in minutes and tells you how much the fine-tuning actually buys — but it is a comparison point, not the plan.
 - Use a **learning-rate schedule**; cosine annealing with a short warmup is a sensible default.
 - Pretrained backbones need **224×224 input** rather than 64×64, because their filters expect that scale. This is a config change, not new code.

@@ -328,3 +328,80 @@ def test_augmentation_changes_training_views_only(tmp_path) -> None:
                 split_name=split,
                 augmentation=DihedralAugmentation(),
             )
+
+
+def test_wafer_resnet_matches_the_project_interface() -> None:
+    """The second from-scratch model must be a drop-in for the pipeline."""
+
+    from fdl_project.models import WaferResNet, count_trainable_parameters
+
+    model = WaferResNet()
+    assert model(torch.rand(2, 3, 64, 64)).shape == (2, 9)
+    # global pooling, so it accepts the pretrained geometry too
+    assert model(torch.rand(2, 3, 224, 224)).shape == (2, 9)
+    # encoder/head naming is what the param_groups regexes address
+    assert hasattr(model, "encoder") and hasattr(model, "head")
+    assert count_trainable_parameters(model) > 1_000_000
+
+    with pytest.raises(ValueError, match="shape"):
+        model(torch.zeros(2, 1, 64, 64))
+
+
+def test_wafer_resnet_keeps_resolution_through_the_stem() -> None:
+    """A 7x7 stride-2 stem plus pooling would drop 64x64 to 16x16 before the
+    first block, which is where thin Scratch patterns are lost."""
+
+    from fdl_project.models import WaferResNet
+
+    model = WaferResNet()
+    stem_output = model.encoder[0](torch.rand(1, 3, 64, 64))
+
+    assert stem_output.shape[-2:] == (64, 64)
+
+
+def test_wafer_resnet_depth_and_attention_are_configurable() -> None:
+    from fdl_project.models import WaferResNet, count_trainable_parameters
+
+    small = WaferResNet(widths=(16, 32), blocks_per_stage=1)
+    attended = WaferResNet(attention="cbam")
+
+    assert small(torch.rand(2, 3, 64, 64)).shape == (2, 9)
+    assert isinstance(attended.attention, CBAM)
+    assert count_trainable_parameters(small) < count_trainable_parameters(attended)
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    [{"widths": ()}, {"blocks_per_stage": 0}, {"dropout": 1.0}, {"hidden_features": 0}],
+)
+def test_invalid_wafer_resnet_settings_are_rejected(kwargs: dict) -> None:
+    from fdl_project.models import WaferResNet
+
+    with pytest.raises(ValueError):
+        WaferResNet(**kwargs)
+
+
+def test_residual_blocks_actually_add_the_skip() -> None:
+    """Without the skip a deep stack is what we already have in BaselineCNN."""
+
+    from fdl_project.models.wafer_resnet import ResidualBlock
+
+    block = ResidualBlock(8, 8)
+    # zero the residual branch: output must then be the input, via the skip
+    with torch.no_grad():
+        block.normalization2.weight.zero_()
+        block.normalization2.bias.zero_()
+    inputs = torch.rand(2, 8, 6, 6)
+
+    assert torch.allclose(block(inputs), torch.relu(inputs), atol=1e-5)
+
+
+def test_residual_block_projects_when_shapes_differ() -> None:
+    from fdl_project.models.wafer_resnet import ResidualBlock
+
+    same = ResidualBlock(16, 16)
+    projected = ResidualBlock(16, 32, stride=2)
+
+    assert isinstance(same.skip, nn.Identity)
+    assert not isinstance(projected.skip, nn.Identity)
+    assert projected(torch.rand(2, 16, 8, 8)).shape == (2, 32, 4, 4)
