@@ -76,11 +76,17 @@ The evaluation pipeline can produce bootstrap confidence intervals; use them in 
 *Why:* two models within roughly 0.04 test macro-F1 of each other are not distinguishable, and claiming a winner there is not defensible.
 *Done when:* the final table reports intervals, and the test split has been evaluated exactly once, at the end.
 
+### 9. Qualitative error analysis
+Look at what the models get wrong, not only how much. Inspect the most-confused pairs in the confusion matrix, plot a grid of misclassified wafers per class, project the learned embeddings with t-SNE or UMAP, and run Grad-CAM on a few examples to check the network attends to the defect rather than the wafer outline.
+
+*Why:* the project brief explicitly asks for **qualitative** error analysis alongside the quantitative kind, and it is what turns a results table into an explanation. Cheap — it runs on predictions we already save.
+*Done when:* the report shows concrete failure cases with a stated hypothesis for each, not just metrics.
+
 ---
 
 ## P2 — Improves the numbers
 
-### 9. Data augmentation
+### 10. Data augmentation
 Use the 8 exact symmetries — 4 rotations by 90° and their mirrors. These are index permutations, so they introduce no interpolation and no invalid pixel values, and they preserve every class label.
 
 **Do not use free-angle rotation** (destroys thin scratch patterns) and **be careful with translation**: shifting a localized defect toward the wafer edge can genuinely turn a `Loc` into an `Edge-Loc` while keeping the old label.
@@ -88,19 +94,19 @@ Use the 8 exact symmetries — 4 rotations by 90° and their mirrors. These are 
 *Why:* the minority classes are oversampled with replacement today, so the model sees the same handful of images repeatedly. Augmentation turns each repeat into a different view — the two techniques compound.
 *Done when:* augmentation applies to training only, validation and test are provably untouched, and a fixed seed reproduces the same views.
 
-### 10. Attention block on one backbone
+### 11. Attention block on one backbone
 Defects occupy a small fraction of each image, which is the standard case for spatial attention (e.g. CBAM).
 
 *Why:* cheap, plausible gain, and a good comparison to show in the presentation.
 *Done when:* one backbone is reported with and without it, everything else held fixed.
 
-### 11. Cap majority-class exposure per epoch
+### 12. Cap majority-class exposure per epoch
 Optional sixth imbalance strategy: limit the majority class to ~12k images **per epoch, resampled each epoch**, rather than deleting rows permanently. Compare it on validation against the current policy.
 
 *Why:* keeps all the hard negatives available across training while reducing per-epoch dominance.
 *Done when:* it has been screened on validation like the other strategies, and the better one is used.
 
-### 12. Free post-hoc wins — do these near the end
+### 13. Free post-hoc wins — do these near the end
 Two techniques that need no retraining:
 
 - **Test-time augmentation:** average predictions over the same 8 symmetries used for training augmentation. Costs 8× inference (seconds), typically worth 1–2 points of macro-F1, and never touches labels.
@@ -111,34 +117,45 @@ Two techniques that need no retraining:
 
 *Deliberately excluded:* ensembling the three final models. It would raise the headline number, but it is competition tuning rather than a deep-learning result, and it obscures the architecture comparison that the report is actually about.
 
-### 13. Alternative long-tail methods worth one run each
-Two well-established techniques we have not tried, both cheap:
+### 14. Alternative long-tail methods worth one run each
+Three techniques we have not tried, all cheap:
 
 - **Logit adjustment:** shift each class's output score by the log of its training frequency, moving the decision boundary to where it would sit under balanced classes. Applied *post-hoc* it needs no retraining at all. Note it must be compared against the **unweighted baseline**, not stacked on the current sampler — the sampler already flattens the effective prior, so doing both double-corrects.
 - **Two-stage (decoupled) training:** train the whole network on the natural, imbalanced distribution, then freeze it and retrain **only the final classifier layer** with balanced sampling. Learning features on the natural distribution and rebalancing only the classifier beats one-stage resampling on long-tailed data, and the second stage takes minutes.
+- **Hierarchical classification:** first decide defect vs. no-defect, then send only the defects to an 8-way classifier. This removes the 85% majority class from the fine-grained decision entirely, so the second stage sees a far less skewed problem. Compare against the single 9-class model, and watch for error compounding — anything the first stage misses is unrecoverable.
 
 *Why:* our current policy was chosen from five candidates under a 4-epoch budget. These two work by a different mechanism than anything in that comparison — reweighting changes what mistakes cost, resampling changes what the model sees, these change where the decision boundary sits.
 *Done when:* each is screened on validation against the current sampler, on the fixed test-bed model.
+
+### 15. Handcrafted geometric features alongside the CNN
+Compute classical wafer-map descriptors — defect density per radial band, bounding-box geometry, and especially a **Radon transform**, which turns straight lines into peaks — and concatenate them with the CNN embedding before the classifier.
+
+*Why:* this is open issue #7 (feature engineering), and there is a specific reason to expect a gain here: the Radon transform is a line detector, and `Scratch` — thin linear defects — is by far our worst class at ~0.32 F1. It also poses a real question for the report: does a CNN rediscover the spatial statistics that were hand-engineered for this task, or does explicit domain knowledge still add something?
+*Done when:* three variants are compared on the fixed test-bed model — handcrafted features alone, CNN alone, and both concatenated.
 
 ---
 
 ## P3 — Stretch, only with spare time
 
-### 14. Pseudo-labeling the unlabeled wafers
+### 16. Pseudo-labeling the unlabeled wafers
 Train the best model, predict on the ~617k unlabeled wafers, keep only high-confidence predictions, and retrain with them included. Costs roughly two training runs.
 
-**Guard rails are not optional here.** The majority class is ~89% of the labeled data, so pseudo-labels will be overwhelmingly that class, and the model is least reliable on exactly the rare classes we want more of — unguarded, this amplifies the imbalance it is meant to fix. Use a high confidence threshold, a **per-class cap** on how many pseudo-labels each class may contribute, and exclude any class whose validation precision is poor.
+**Guard rails are not optional here.** The majority class is 85.2% of the labeled data, so pseudo-labels will be overwhelmingly that class, and the model is least reliable on exactly the rare classes we want more of — unguarded, this amplifies the imbalance it is meant to fix. Use a high confidence threshold, a **per-class cap** on how many pseudo-labels each class may contribute, and exclude any class whose validation precision is poor.
 
 *Worth doing only if a full training run turns out to be fast.*
 
-### 15. Self-supervised pretraining on the unlabeled data
+### 17. Self-supervised pretraining on the unlabeled data
 ~617k unlabeled wafers are available and already filtered so none of them come from validation or test groups. Pretrain an autoencoder on them, then fine-tune a classifier head on the labeled set. Reconstruct pixels as a **3-way classification per pixel**, not regression — otherwise the decoder outputs meaningless in-between values.
 
 *Rough cost:* ~30 minutes of GPU pretraining; most of the effort is in the fine-tuning protocol.
 
+*Two cheaper variants of the same idea.* **Multi-task:** rather than pretraining separately, train one network with both a classification loss and a reconstruction loss on a shared encoder — a single run, where the reconstruction term forces the encoder to understand wafer structure. **SimCLR-style contrastive:** train the encoder to agree across two augmented views of the same wafer; our 8 exact symmetries are the natural views and no decoder is needed.
+
+*The experiment that makes this worth doing:* train each variant with 5%, 10%, 25% and 100% of the labels and plot macro-F1 against label count. The question — *how much labeled data does self-supervised pretraining save?* — is a better story than any single number, and a negative result is still a result.
+
 *Alternative worth knowing:* **Mean Teacher with a supervised contrastive loss**, published on this exact dataset with a ~4.5 point F1 gain over a plain ResNet18. Mean Teacher keeps an exponential moving average of the model as a "teacher", shows it and the student two differently augmented views of the same *unlabeled* wafer, and penalises disagreement — so unlabeled data is used without ever needing its label. The contrastive part pulls same-class embeddings together on the labeled data. It is a **single training run at ~1.5–2× cost**, not a separate pretraining stage, and our 8 exact symmetries are ideal as the two views. See `design-notes.md` §12.
 
-### 16. LoRA fine-tuning of a larger pretrained model
+### 18. LoRA fine-tuning of a larger pretrained model
 Adapt a backbone too large to fine-tune outright (a ViT, say) by training small low-rank adapters while the original weights stay fixed. Memory-cheap, and an unusual technique to show in a course project.
 
 *Why:* it turns "too big to fine-tune, so we froze it" into "too big to fine-tune, so we adapted it properly".
@@ -152,6 +169,6 @@ Adapt a backbone too large to fine-tune outright (a ViT, say) by training small 
 
 ## If time runs short
 
-Items **1–8** are the minimum for a submission that stands up to questions. Items 9–13 are where the remaining accuracy is — **12 is the cheapest of all and should not be skipped**. Items 14–16 are stretch, and good presentation material either way.
+Items **1–9** are the minimum for a submission that stands up to questions — item 9 included, since qualitative analysis is explicitly asked for in the brief. Items 10–15 are where the remaining accuracy is; **13 is the cheapest of all and should not be skipped**. Items 16–18 are stretch, and good presentation material either way.
 
 External benchmarks and why most published WM-811K numbers are not comparable to ours: `design-notes.md` §12. Read it before quoting anyone's accuracy.

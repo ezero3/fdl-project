@@ -64,7 +64,7 @@ Selected from five candidates — plain cross-entropy, two loss-reweighting sche
 
 ## 5. Evaluation
 
-**Decided.** Macro-F1 is the primary metric: all nine classes count equally despite the majority class holding ~89% of the data. Validation drives every selection decision; the test split stays frozen until the final comparison. Implemented in `evaluation.py`.
+**Decided.** Macro-F1 is the primary metric: all nine classes count equally despite the majority class holding 85.2% of the labeled data. Validation drives every selection decision; the test split stays frozen until the final comparison. Implemented in `evaluation.py`.
 
 **Added: bootstrap confidence intervals** (`bootstrap_evaluation`). Macro-F1 has no closed-form sampling distribution, so uncertainty is estimated by resampling the evaluated rows with replacement and taking percentile intervals.
 
@@ -163,7 +163,7 @@ GPU random state itself is already correct — `torch.manual_seed` seeds all dev
 
 Published WM-811K numbers vary from ~79% to ~99% accuracy, and almost none of them measure the same thing we do. Before quoting any of them, check three things: whether the **test** distribution is natural or rebalanced, whether all nine classes are used, and whether the metric is accuracy or macro-F1.
 
-The headline figures in the ~98–99% range are typically obtained on a **balanced subset** of the nine classes. On the natural distribution the majority class alone is ~85–89% of the data, so accuracy above 95% is nearly free and says almost nothing — our own selected run reaches 0.9562 accuracy with a macro-F1 of 0.7956. Those numbers are not evidence that we are far behind; they answer a different question.
+The headline figures in the ~98–99% range are typically obtained on a **balanced subset** of the nine classes. On the natural distribution the majority class alone is 85.2% of the data, so accuracy above 95% is nearly free and says almost nothing — our own selected run reaches 0.9562 accuracy with a macro-F1 of 0.7956. Those numbers are not evidence that we are far behind; they answer a different question.
 
 One comparable reference point, Wei et al., *Utilizing the Mean Teacher with Supcontrast Loss for Wafer Pattern Recognition* (arXiv:2411.18533, 2024), uses all nine classes on WM-811K with a ResNet18, trains on 10% labeled data with the rest as unlabeled, and rebalances training with SMOTE plus undersampling:
 
