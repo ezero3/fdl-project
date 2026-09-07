@@ -503,3 +503,131 @@ def test_rotation_imports_nothing_at_call_time() -> None:
 
     assert imports == []
     assert hasattr(augmentation, "InterpolationMode")
+
+
+# -- device-side transform -------------------------------------------------
+
+
+def test_device_encoding_matches_the_cpu_path_exactly() -> None:
+    """transform_device changes *where* the work happens, never the result --
+    so a model trained one way still evaluates correctly through the other."""
+
+    from fdl_project.data.batch_transform import encode_batch
+    from fdl_project.data.preprocessing import PreprocessingConfig, encode_categorical_map
+
+    states = torch.randint(0, 3, (8, 16, 16), dtype=torch.uint8)
+    for config in (
+        PreprocessingConfig(),
+        PreprocessingConfig(encoding="grayscale_rgb"),
+        PreprocessingConfig(encoding="grayscale_rgb", normalization="imagenet"),
+    ):
+        on_device = encode_batch(states, config)
+        per_item = torch.stack(
+            [encode_categorical_map(s.long(), config) for s in states]
+        )
+        assert torch.equal(on_device, per_item), config.encoding
+
+
+def test_batched_rotation_reproduces_the_exact_symmetries() -> None:
+    """grid_sample at 90 degree multiples must agree with index permutation,
+    which is what shows the interpolation is not corrupting cells."""
+
+    from fdl_project.data.batch_transform import rotate_batch
+
+    states = torch.randint(0, 3, (3, 12, 12), dtype=torch.uint8)
+    rotated = rotate_batch(states, torch.tensor([0.0, 180.0, 0.0]))
+
+    assert torch.equal(rotated[0], states[0])
+    assert torch.equal(rotated[1], torch.flip(states[1], (0, 1)))
+
+
+def test_device_rotation_keeps_the_output_one_hot() -> None:
+    """Nearest neighbour copies whole cells, so every position stays exactly
+    one state -- the property free-angle rotation must not break."""
+
+    from fdl_project.data.batch_transform import BatchTransform
+    from fdl_project.data.preprocessing import PreprocessingConfig
+
+    transform = BatchTransform(PreprocessingConfig(), "rotation", degrees=180.0)
+    states = torch.randint(0, 3, (16, 24, 24), dtype=torch.uint8)
+
+    encoded = transform(states, training=True)
+
+    assert torch.all(encoded.sum(dim=1) == 1)
+
+
+def test_device_transform_does_not_augment_outside_training() -> None:
+    """Validation and test are evaluated at their natural distribution."""
+
+    from fdl_project.data.batch_transform import BatchTransform, encode_batch
+    from fdl_project.data.preprocessing import PreprocessingConfig
+
+    config = PreprocessingConfig()
+    transform = BatchTransform(config, "rotation")
+    states = torch.randint(0, 3, (4, 16, 16), dtype=torch.uint8)
+
+    assert torch.equal(transform(states, training=False), encode_batch(states, config))
+
+
+def test_device_transform_rejects_encoded_input() -> None:
+    from fdl_project.data.batch_transform import BatchTransform
+    from fdl_project.data.preprocessing import PreprocessingConfig
+
+    transform = BatchTransform(PreprocessingConfig())
+    with pytest.raises(TypeError, match="uint8"):
+        transform(torch.rand(2, 3, 8, 8), training=True)
+
+
+def test_device_transform_refuses_the_dihedral_subsets() -> None:
+    """They are exact index permutations and cost almost nothing on CPU."""
+
+    from fdl_project.data.batch_transform import BatchTransform
+    from fdl_project.data.preprocessing import PreprocessingConfig
+
+    with pytest.raises(ValueError, match="transform_device"):
+        BatchTransform(PreprocessingConfig(), "dihedral8")
+
+
+def test_fit_model_runs_end_to_end_with_a_device_transform() -> None:
+    """The whole point of the flag: the loader ships uint8 categorical maps
+    and the encoding happens after the transfer, with training and
+    validation both going through it."""
+
+    from torch.utils.data import DataLoader, Dataset
+
+    from fdl_project.config.schema import EarlyStoppingConfig, TrainerConfig
+    from fdl_project.data.batch_transform import BatchTransform
+    from fdl_project.data.preprocessing import PreprocessingConfig
+    from fdl_project.training.loop import fit_model
+
+    class CategoricalBatches(Dataset):
+        def __len__(self) -> int:
+            return 24
+
+        def __getitem__(self, position: int):
+            generator = torch.Generator().manual_seed(position)
+            states = torch.randint(0, 3, (16, 16), generator=generator, dtype=torch.uint8)
+            return states, position % 9, position
+
+    loader = DataLoader(CategoricalBatches(), batch_size=8)
+    model = BaselineCNN()
+    transform = BatchTransform(
+        PreprocessingConfig(target_size=(16, 16)), "rotation", probability=0.5
+    )
+
+    result = fit_model(
+        model,
+        loader,
+        loader,
+        nn.CrossEntropyLoss(),
+        TrainerConfig(
+            max_epochs=2,
+            batch_size=8,
+            early_stopping=EarlyStoppingConfig(min_epochs=1, patience=2),
+        ),
+        optimizer=torch.optim.AdamW(model.parameters(), lr=1e-3),
+        batch_transform=transform,
+    )
+
+    assert result.last_epoch == 2
+    assert len(result.history) == 2

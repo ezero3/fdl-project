@@ -103,6 +103,7 @@ def train_one_epoch(
     scaler: torch.amp.GradScaler | None = None,
     scheduler: Any = None,
     scheduler_interval: str = "epoch",
+    batch_transform: Any = None,
 ) -> dict[str, float | int]:
     """Train one complete epoch and report sample-weighted diagnostics."""
 
@@ -124,6 +125,9 @@ def train_one_epoch(
         # forward wait for it, so no explicit synchronise is needed.
         inputs = inputs.to(device_object, non_blocking=True)
         targets = targets.to(device_object, dtype=torch.long, non_blocking=True)
+        if batch_transform is not None:
+            # Categorical uint8 arrived; augment and encode on the device.
+            inputs = batch_transform(inputs, training=True)
         if targets.ndim != 1 or len(targets) != len(inputs):
             raise ValueError("Training targets must contain one label per input.")
 
@@ -184,6 +188,7 @@ def fit_model(
     epoch_callback: EpochCallback | None = None,
     sampler_seed: int | None = None,
     resume: ResumeState | None = None,
+    batch_transform: Any = None,
 ) -> FitResult:
     """Fit until the monitored validation metric stops improving.
 
@@ -243,6 +248,7 @@ def fit_model(
             scaler=scaler,
             scheduler=scheduler,
             scheduler_interval=scheduler_interval,
+            batch_transform=batch_transform,
         )
         validation = evaluate_model(
             model,
@@ -250,6 +256,7 @@ def fit_model(
             device=device_object,
             criterion=validation_criterion,
             split_name="validation",
+            batch_transform=batch_transform,
         )
         epoch_metrics: dict[str, Any] = {
             "epoch": epoch,

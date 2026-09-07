@@ -145,6 +145,7 @@ def collect_predictions(
     criterion: Any | None = None,
     *,
     class_names: Iterable[str] = CLASS_NAMES,
+    batch_transform: Any = None,
 ) -> CollectedPredictions:
     """Run a complete DataLoader in inference mode and collect CPU-side outputs.
 
@@ -185,9 +186,13 @@ def collect_predictions(
                     f"Targets must contain class indices in [0, {len(names) - 1}]."
                 )
 
-            logits = _extract_logits(
-                model(inputs.to(device_object, non_blocking=True))
-            )
+            inputs = inputs.to(device_object, non_blocking=True)
+            if batch_transform is not None:
+                # Encode on device. training=False, so no augmentation:
+                # validation and test are evaluated at their natural
+                # distribution.
+                inputs = batch_transform(inputs, training=False)
+            logits = _extract_logits(model(inputs))
             if logits.ndim != 2 or tuple(logits.shape) != (batch_size, len(names)):
                 raise ValueError(
                     "Model logits must have shape "
@@ -388,6 +393,7 @@ def evaluate_model(
     *,
     class_names: Iterable[str] = CLASS_NAMES,
     split_name: str = "validation",
+    batch_transform: Any = None,
 ) -> EvaluationResult:
     """Collect PyTorch model outputs and compute the common project metrics."""
 
@@ -398,6 +404,7 @@ def evaluate_model(
         device=device,
         criterion=criterion,
         class_names=names,
+        batch_transform=batch_transform,
     )
     return evaluate_predictions(
         true_indices=collected.true_indices,

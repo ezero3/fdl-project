@@ -22,6 +22,7 @@ from fdl_project.config.registry import build_model
 from fdl_project.config.schema import ExperimentConfig
 from fdl_project.constants import class_encoding_metadata
 from fdl_project.data.augmentation import build_augmentation
+from fdl_project.data.batch_transform import BatchTransform
 from fdl_project.data.preprocessing import background_fill
 from fdl_project.data.datasets import (
     WM811KDataset,
@@ -117,6 +118,20 @@ def _rotation_fill(config: ExperimentConfig) -> dict[str, tuple[float, ...]]:
     return {"fill": tuple(background_fill(config.data.preprocessing))}
 
 
+def build_batch_transform(config: ExperimentConfig) -> BatchTransform | None:
+    """The device-side transform, when the config asks for one."""
+
+    if config.data.transform_device != "cuda":
+        return None
+    augmentation = config.data.augmentation
+    return BatchTransform(
+        preprocessing=config.data.preprocessing,
+        augmentation_name=augmentation.name,
+        probability=augmentation.probability,
+        degrees=float(dict(augmentation.kwargs).get("degrees", 180.0)),
+    )
+
+
 def build_datasets(
     config: ExperimentConfig, dataframe: pd.DataFrame | None = None
 ) -> tuple[WM811KDataset, WM811KDataset]:
@@ -124,6 +139,7 @@ def build_datasets(
 
     if dataframe is None:
         dataframe = load_wm811k_dataframe(config.data.dataset_path)
+    on_device = config.data.transform_device == "cuda"
     datasets = []
     for split_name in ("train", "validation"):
         dataset = create_split_dataset(
@@ -144,9 +160,10 @@ def build_datasets(
                     **_rotation_fill(config),
                     **dict(config.data.augmentation.kwargs),
                 )
-                if split_name == "train"
+                if split_name == "train" and not on_device
                 else None
             ),
+            return_categorical=on_device,
         )
         if config.data.subset is not None:
             dataset = _subset_dataset(dataset, config.data.subset, config.seed)
@@ -205,6 +222,7 @@ def run_experiment(
     train_loader, validation_loader = build_dataloaders(
         config, train_dataset, validation_dataset
     )
+    batch_transform = build_batch_transform(config)
     class_counts = compute_class_counts(train_dataset.target_indices)
     criterion = build_training_loss(config.imbalance, class_counts)
 
@@ -264,6 +282,7 @@ def run_experiment(
         callbacks=callbacks,
         sampler_seed=config.seed,
         resume=resume_state,
+        batch_transform=batch_transform,
     )
 
     # A run resumed past its best epoch never sees that epoch, so fit reports
@@ -283,6 +302,7 @@ def run_experiment(
             device=device_object,
             criterion=nn.CrossEntropyLoss(),
             split_name="validation",
+            batch_transform=batch_transform,
         )
         logger.info(
             "No epoch after %d improved; reporting epoch %d recovered from %s.",

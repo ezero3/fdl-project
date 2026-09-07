@@ -120,6 +120,7 @@ class WM811KDataset(Dataset[tuple[Tensor, Tensor, Tensor]]):
         preprocessing_config: PreprocessingConfig = DEFAULT_PREPROCESSING_CONFIG,
         cache_maps: bool = False,
         augmentation: DihedralAugmentation | None = None,
+        return_categorical: bool = False,
     ) -> None:
         if split_name not in _SPLIT_NAMES:
             raise ValueError(f"Unknown split {split_name!r}.")
@@ -173,6 +174,14 @@ class WM811KDataset(Dataset[tuple[Tensor, Tensor, Tensor]]):
         self.preprocessing_config = preprocessing_config
         self.preprocessor = WaferMapPreprocessor(preprocessing_config)
         self.augmentation = augmentation
+        # Under transform_device='cuda' the batch is encoded (and augmented)
+        # on the accelerator, so items leave here as categorical uint8.
+        self.return_categorical = return_categorical
+        if return_categorical and augmentation is not None:
+            raise ValueError(
+                "return_categorical defers augmentation to the device; pass "
+                "the augmentation to BatchTransform instead of the dataset."
+            )
         self.cached_maps: Tensor | None = None
         self.cache_mode = _resolve_cache_mode(
             cache_maps, len(self.row_indices), preprocessing_config
@@ -268,6 +277,16 @@ class WM811KDataset(Dataset[tuple[Tensor, Tensor, Tensor]]):
 
     def __getitem__(self, position: int) -> tuple[Tensor, Tensor, Tensor]:
         row_index = int(self.row_indices[position])
+        if self.return_categorical:
+            states = (
+                self.cached_maps[position]
+                if self.cached_maps is not None
+                else transform_categorical_map(
+                    validate_wafer_map(self.wafer_map(position)),
+                    self.preprocessing_config,
+                ).to(torch.uint8)
+            )
+            return states, int(self.target_indices[position]), row_index
         if self.cached_maps is not None:
             # Already validated and letterboxed when the cache was built, so
             # only the encoding is left.
@@ -294,8 +313,9 @@ def create_split_dataset(
     split_name: SplitName,
     *,
     preprocessing_config: PreprocessingConfig = DEFAULT_PREPROCESSING_CONFIG,
-    cache_maps: bool = False,
+    cache_maps: bool | str = False,
     augmentation: DihedralAugmentation | None = None,
+    return_categorical: bool = False,
 ) -> WM811KDataset:
     """Build a supervised Dataset from one persisted split."""
 
@@ -305,6 +325,7 @@ def create_split_dataset(
         split_name=split_name,
         preprocessing_config=preprocessing_config,
         cache_maps=cache_maps,
+        return_categorical=return_categorical,
         augmentation=augmentation,
     )
 

@@ -19,6 +19,16 @@ data:
   # cost, at the price of RAM and /dev/shm; it cannot fix a throughput
   # deficit, only jitter.
   prefetch_factor: 2
+  # Where preprocessing runs.
+  #   cpu   encode per item in the dataloader workers (default)
+  #   cuda  ship uint8 categorical maps and encode on the accelerator --
+  #         12x less over PCIe, no per-item CPU encoding, and free-angle
+  #         rotation becomes one batched grid_sample instead of a per-item
+  #         resample. Supports augmentation 'rotation' or none; the dihedral
+  #         subsets are index permutations that cost almost nothing on CPU.
+  # Not the default because it only pays when the loader is the bottleneck.
+  # Results are identical either way; only the speed and the RNG stream differ.
+  transform_device: cpu
   # What to hold in memory. The 2 GB source table is dropped either way.
   #   auto      letterboxed maps when they fit a 2 GB budget, else raw
   #   geometry  letterboxed to target_size -- fastest; 0.46 GB at 64x64,
