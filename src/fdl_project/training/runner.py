@@ -186,6 +186,7 @@ def run_experiment(
     resume: str | None = None,
     device: str | None = None,
     bootstrap_resamples: int = 1000,
+    dataframe: pd.DataFrame | None = None,
 ) -> RunResult:
     """Train, select on validation, and write the standard artifacts.
 
@@ -196,7 +197,9 @@ def run_experiment(
     seed_everything(config.seed)
     device_object = resolve_device(device or config.trainer.device)
 
-    train_dataset, validation_dataset = build_datasets(config)
+    # A sweep passes the source table in so the 2 GB pickle is read once for
+    # the whole run set rather than once per arm.
+    train_dataset, validation_dataset = build_datasets(config, dataframe)
     train_loader, validation_loader = build_dataloaders(
         config, train_dataset, validation_dataset
     )
