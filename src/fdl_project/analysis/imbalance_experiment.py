@@ -11,6 +11,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+import numpy as np
 import pandas as pd
 import torch
 from matplotlib.figure import Figure
@@ -31,7 +32,82 @@ from fdl_project.data.imbalance import (
 )
 from fdl_project.models.baseline_cnn import BaselineCNN, count_trainable_parameters
 from fdl_project.data.preprocessing import DEFAULT_PREPROCESSING_CONFIG
-from fdl_project.training.loop import TrainingConfig, fit_model, set_reproducible_seed
+from fdl_project.config.schema import EarlyStoppingConfig, TrainerConfig
+from fdl_project.training.loop import fit_model
+from fdl_project.training.seed import seed_everything
+
+
+@dataclass(frozen=True)
+class TrainingConfig:
+    """The screening budget for this experiment only.
+
+    Four epochs is deliberately short: this experiment compares imbalance
+    strategies against each other on one fixed instrument model, and a
+    strategy that only wins after thirty epochs is not the kind of difference
+    it is looking for. It is *not* a training budget -- real runs set their own
+    in ``configs/train/*.yaml``, where the default is forty epochs.
+    """
+
+    batch_size: int = 512
+    max_epochs: int = 4
+    minimum_epochs: int = 3
+    early_stopping_patience: int = 2
+    learning_rate: float = 1e-3
+    weight_decay: float = 1e-4
+    max_gradient_norm: float = 5.0
+
+    def __post_init__(self) -> None:
+        integer_fields = {
+            "batch_size": self.batch_size,
+            "max_epochs": self.max_epochs,
+            "minimum_epochs": self.minimum_epochs,
+            "early_stopping_patience": self.early_stopping_patience,
+        }
+        for name, value in integer_fields.items():
+            if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+                raise ValueError(f"{name} must be a positive integer.")
+        if self.minimum_epochs > self.max_epochs:
+            raise ValueError("minimum_epochs cannot exceed max_epochs.")
+        for name, value in {
+            "learning_rate": self.learning_rate,
+            "weight_decay": self.weight_decay,
+            "max_gradient_norm": self.max_gradient_norm,
+        }.items():
+            if (
+                isinstance(value, bool)
+                or not isinstance(value, (int, float))
+                or not np.isfinite(value)
+            ):
+                raise ValueError(f"{name} must be finite.")
+        if (
+            self.learning_rate <= 0
+            or self.weight_decay < 0
+            or self.max_gradient_norm <= 0
+        ):
+            raise ValueError(
+                "learning_rate and max_gradient_norm must be positive; "
+                "weight_decay must be non-negative."
+            )
+
+    def to_trainer_config(self, *, device: str) -> TrainerConfig:
+        """Express this budget in the shared trainer schema."""
+
+        return TrainerConfig(
+            max_epochs=self.max_epochs,
+            batch_size=self.batch_size,
+            max_gradient_norm=self.max_gradient_norm,
+            amp=False,
+            device=device,
+            early_stopping=EarlyStoppingConfig(
+                monitor="validation_macro_f1",
+                mode="max",
+                patience=self.early_stopping_patience,
+                min_epochs=self.minimum_epochs,
+            ),
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
 
 
 @dataclass(frozen=True)
@@ -379,7 +455,7 @@ def run_class_imbalance_experiment(
         strategy = strategies[strategy_name]
         if progress is not None:
             progress(f"Starting {phase}: {strategy_name}, seed {seed}.")
-        set_reproducible_seed(seed)
+        seed_everything(seed)
         model = BaselineCNN()
         criterion = build_training_loss(strategy, class_counts)
         train_loader = create_experiment_dataloader(
@@ -398,12 +474,18 @@ def run_class_imbalance_experiment(
                     f"val_macro_f1={metrics['validation_macro_f1']:.4f}"
                 )
 
+        optimizer = torch.optim.AdamW(
+            model.parameters(),
+            lr=config.training.learning_rate,
+            weight_decay=config.training.weight_decay,
+        )
         fitted = fit_model(
             model,
             train_loader,
             validation_loader,
             criterion,
-            config.training,
+            config.training.to_trainer_config(device=config.device),
+            optimizer=optimizer,
             device=config.device,
             epoch_callback=report_epoch,
         )
