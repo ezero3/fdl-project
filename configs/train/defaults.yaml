@@ -9,7 +9,10 @@ seed: 86
 data:
   dataset_path: data/MIR-WM811K/WM811K.pkl
   split_directory: data/splits
-  num_workers: 2
+  # Measured on a Colab T4 (8 vCPUs): 2 -> 8 workers was a 1.9x speedup on the
+  # 64x64 models, which are dataloader-bound, not GPU-bound. See
+  # docs/phase0-results.md. Lower it only if the machine has fewer cores.
+  num_workers: 8
   pin_memory: true
   # Copy this split's raw uint8 maps into memory (~350 MB for all labeled
   # data) and drop the 2 GB source table. Geometry and encoding still run per
@@ -66,7 +69,9 @@ model:
 optimizer:
   name: adamw
   kwargs:
-    lr: 1.0e-3
+    # Square-root scaled for batch 256 (was 1.0e-3 at batch 512). Changing the
+    # batch without rescaling the learning rate conflates two variables.
+    lr: 7.0e-4
     weight_decay: 1.0e-4
   # param_groups lets one model train at several learning rates at once;
   # see configs/train/resnet18_224_finetune.yaml.
@@ -79,7 +84,10 @@ scheduler:
 
 trainer:
   max_epochs: 40
-  batch_size: 512
+  # Throughput on the 64x64 models is flat from batch 64 to 1024 (the GPU sits
+  # at ~15% while the CPU transforms), so a large batch buys no speed and costs
+  # optimizer steps: 512 gives 237 steps/epoch against 473 at 256.
+  batch_size: 256
   max_gradient_norm: 5.0
   amp: true               # fp16 on CUDA; ignored on CPU and MPS
   device: auto

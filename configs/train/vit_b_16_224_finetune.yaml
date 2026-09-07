@@ -32,5 +32,7 @@ scheduler:
     min_lr_ratio: 0.01
 
 trainer:
-  # ViT-B is ~86M parameters at 224x224; this is what fits a T4.
-  batch_size: 32
+  # Measured on a T4: batch 128 peaks at 9.8 GiB and is 7% faster than 32.
+  # 256 OOMs when fine-tuning. With the encoder frozen the ceiling is 1024,
+  # but 128 is still the fastest point. See docs/phase0-results.md.
+  batch_size: 128
