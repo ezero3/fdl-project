@@ -26,6 +26,8 @@ from dataclasses import dataclass
 import torch
 from torch import Tensor
 
+from fdl_project.constants import CLASS_NAMES, NUM_CLASSES
+
 #: Rotations by 90 degrees, each optionally mirrored: |D4| = 8.
 NUM_DIHEDRAL_TRANSFORMS = 8
 
@@ -40,6 +42,32 @@ TRANSFORM_SUBSETS: dict[str, tuple[int, ...]] = {
     "rotations": (0, 1, 2, 3),              # C4: rotations only
     "flips": (0, 2, 4, 6),                  # Klein group: identity, h, v, both
 }
+
+
+def build_class_probabilities(
+    mapping: dict[str, float] | None, *, default: float
+) -> tuple[float, ...] | None:
+    """Turn a {class name: probability} mapping into a per-index vector.
+
+    Classes the mapping omits keep ``default``. Returns ``None`` when there is
+    nothing class-specific to apply, so the uniform path stays free.
+    """
+
+    if not mapping:
+        return None
+    probabilities = [float(default)] * NUM_CLASSES
+    for class_name, value in mapping.items():
+        if class_name not in CLASS_NAMES:
+            raise ValueError(
+                f"Unknown class {class_name!r} in per-class augmentation. "
+                f"Expected one of {CLASS_NAMES!r}."
+            )
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            raise ValueError("per-class augmentation probabilities must be numbers.")
+        if not 0.0 <= value <= 1.0:
+            raise ValueError("per-class augmentation probabilities must lie in [0, 1].")
+        probabilities[CLASS_NAMES.index(class_name)] = float(value)
+    return tuple(probabilities)
 
 
 def apply_dihedral(tensor: Tensor, index: int) -> Tensor:
@@ -78,6 +106,7 @@ class DihedralAugmentation:
 
     transforms: tuple[int, ...] = TRANSFORM_SUBSETS["dihedral8"]
     probability: float = 1.0
+    class_probabilities: tuple[float, ...] | None = None
 
     def __post_init__(self) -> None:
         if (
@@ -96,8 +125,9 @@ class DihedralAugmentation:
         if len(set(transforms)) != len(transforms):
             raise ValueError("transform indices must be unique.")
         object.__setattr__(self, "transforms", transforms)
+        _validate_class_probabilities(self.class_probabilities)
 
-    def __call__(self, tensor: Tensor) -> Tensor:
+    def __call__(self, tensor: Tensor, class_index: int | None = None) -> Tensor:
         """Augment one sample, drawing from the ambient (seeded) torch RNG.
 
         The draw uses torch's global generator, which ``seed_everything`` seeds
@@ -105,7 +135,9 @@ class DihedralAugmentation:
         reproducible for a given seed and differ between workers.
         """
 
-        if self.probability < 1.0 and float(torch.rand(())) >= self.probability:
+        if not _should_augment(
+            self.probability, self.class_probabilities, class_index
+        ):
             return tensor
         choice = int(torch.randint(len(self.transforms), ()))
         return apply_dihedral(tensor, self.transforms[choice])
@@ -130,8 +162,20 @@ class RotationAugmentation:
 
     degrees: float = 180.0
     probability: float = 1.0
+    class_probabilities: tuple[float, ...] | None = None
 
     def __post_init__(self) -> None:
+        if self.class_probabilities is not None:
+            # Resampling leaves faint artifacts. Applying it to some classes
+            # and not others makes "looks resampled" predict "is a rare class",
+            # and the network will happily learn that instead of the defect.
+            # The exact-permutation subsets have no such artifact, so they are
+            # the ones that may vary by class.
+            raise ValueError(
+                "Per-class probabilities are not allowed for 'rotation': it "
+                "resamples, so applying it unevenly across classes leaks the "
+                "label. Use dihedral8, rotations, or flips instead."
+            )
         if (
             isinstance(self.degrees, bool)
             or not isinstance(self.degrees, (int, float))
@@ -145,11 +189,11 @@ class RotationAugmentation:
         ):
             raise ValueError("augmentation probability must lie in [0, 1].")
 
-    def __call__(self, tensor: Tensor) -> Tensor:
+    def __call__(self, tensor: Tensor, class_index: int | None = None) -> Tensor:
         from torchvision.transforms import InterpolationMode
         from torchvision.transforms.v2 import functional as transforms_functional
 
-        if self.probability < 1.0 and float(torch.rand(())) >= self.probability:
+        if not _should_augment(self.probability, None, class_index):
             return tensor
         angle = float(torch.empty(()).uniform_(-self.degrees, self.degrees))
         # One-hot channel 0 is "no die", so filling it is the only encoding of
@@ -164,8 +208,36 @@ class RotationAugmentation:
         )
 
 
+def _validate_class_probabilities(probabilities: tuple[float, ...] | None) -> None:
+    if probabilities is None:
+        return
+    if len(probabilities) != NUM_CLASSES:
+        raise ValueError(
+            f"class_probabilities must have one entry per class ({NUM_CLASSES})."
+        )
+    if any(not 0.0 <= value <= 1.0 for value in probabilities):
+        raise ValueError("class_probabilities must lie in [0, 1].")
+
+
+def _should_augment(
+    probability: float,
+    class_probabilities: tuple[float, ...] | None,
+    class_index: int | None,
+) -> bool:
+    """Decide whether this sample is augmented at all."""
+
+    chance = probability
+    if class_probabilities is not None and class_index is not None:
+        chance = class_probabilities[int(class_index)]
+    if chance >= 1.0:
+        return True
+    if chance <= 0.0:
+        return False
+    return float(torch.rand(())) < chance
+
+
 def _dihedral_factory(name: str):
-    def build(**kwargs: float) -> DihedralAugmentation:
+    def build(**kwargs) -> DihedralAugmentation:
         return DihedralAugmentation(transforms=TRANSFORM_SUBSETS[name], **kwargs)
 
     return build
@@ -177,7 +249,13 @@ AUGMENTATION_REGISTRY = {
 } | {"rotation": RotationAugmentation}
 
 
-def build_augmentation(name: str | None, **kwargs: float):
+def build_augmentation(
+    name: str | None,
+    *,
+    class_probabilities: dict[str, float] | None = None,
+    probability: float = 1.0,
+    **kwargs,
+):
     """Build a configured augmentation, or ``None`` when disabled.
 
     Augmentation is off unless a config names one, and is train-only -- see
@@ -193,7 +271,10 @@ def build_augmentation(name: str | None, **kwargs: float):
         raise KeyError(
             f"Unknown augmentation {name!r}. Available: {available}."
         ) from None
-    return factory(**kwargs)
+    resolved = build_class_probabilities(class_probabilities, default=probability)
+    if resolved is not None:
+        kwargs["class_probabilities"] = resolved
+    return factory(probability=probability, **kwargs)
 
 
 def available_augmentations() -> tuple[str, ...]:

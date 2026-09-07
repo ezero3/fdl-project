@@ -58,6 +58,9 @@ class AugmentationConfig:
 
     name: str | None = None
     probability: float = 1.0
+    class_probabilities: MappingProxyType = field(
+        default_factory=lambda: MappingProxyType({})
+    )
     kwargs: MappingProxyType = field(default_factory=lambda: MappingProxyType({}))
 
     def __post_init__(self) -> None:
@@ -71,6 +74,14 @@ class AugmentationConfig:
             self,
             "kwargs",
             _freeze_kwargs(self.kwargs, field_name="data.augmentation.kwargs"),
+        )
+        object.__setattr__(
+            self,
+            "class_probabilities",
+            _freeze_kwargs(
+                self.class_probabilities,
+                field_name="data.augmentation.class_probabilities",
+            ),
         )
         if (
             isinstance(self.probability, bool)
@@ -87,6 +98,7 @@ class AugmentationConfig:
         return {
             "name": self.name,
             "probability": float(self.probability),
+            "class_probabilities": dict(self.class_probabilities),
             "kwargs": dict(self.kwargs),
         }
 

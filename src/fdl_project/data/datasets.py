@@ -214,7 +214,8 @@ class WM811KDataset(Dataset[tuple[Tensor, Tensor, Tensor]]):
             self.wafer_map(position), validate=self.cached_maps is None
         )
         if self.augmentation is not None:
-            image = self.augmentation(image)
+            # The class index lets a policy augment rare classes more heavily.
+            image = self.augmentation(image, int(self.target_indices[position]))
         target = torch.tensor(int(self.target_indices[position]), dtype=torch.long)
         source_index = torch.tensor(row_index, dtype=torch.long)
         return image, target, source_index

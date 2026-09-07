@@ -139,7 +139,19 @@ Use exact symmetries — the 4 rotations by 90° and their mirrors, or a subgrou
 
 Defective-die count is preserved (median -0.6% at 30 degrees) and **no wafer in any class lost its pattern at any angle**. `Scratch` fragments no more than `Loc` or `Donut`, and far less than `Random`. So `rotation` is offered as an option — but it is the only one that resamples, so it is not the default, and the three exact-permutation subgroups remain the safe baseline.
 
-*Why:* the minority classes are oversampled with replacement today, so the model sees the same handful of images repeatedly. Augmentation turns each repeat into a different view — the two techniques compound.
+*Why:* the minority classes are oversampled with replacement today, so the model sees the same handful of images repeatedly. Augmentation turns each repeat into a different view — the two techniques compound. That compounding is automatic: the weighted sampler draws a `Near-full` wafer ~40 times an epoch and a `none` wafer once, so the rare one already yields 40 distinct views for free.
+
+**Per-class augmentation is available on top of that**, for spending the budget only where it helps:
+
+```yaml
+data:
+  augmentation:
+    name: dihedral8
+    probability: 0.0                                    # default for unlisted classes
+    class_probabilities: {Scratch: 1.0, Near-full: 1.0}  # and these instead
+```
+
+**Only the exact-permutation options may vary by class.** `rotation` refuses a per-class policy and raises if given one: resampling leaves faint artifacts, so augmenting rare classes and not common ones makes "looks resampled" a perfect predictor of "is a rare class", and the network learns the augmentation rather than the defect. A dihedral transform leaves no such trace — a rotated wafer is pixel-identical to one that was natively in that orientation — so varying it by class is safe.
 *Done when:* augmentation applies to training only, validation and test are provably untouched, and a fixed seed reproduces the same views. ✅
 
 **Off by default.** A config has to ask for it:

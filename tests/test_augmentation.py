@@ -207,6 +207,58 @@ def test_rotation_is_reachable_from_the_registry() -> None:
     assert "rotation" in available_augmentations()
 
 
+def test_per_class_probabilities_target_the_rare_classes() -> None:
+    """Augment the rare classes and leave the majority class alone."""
+
+    from fdl_project.constants import CLASS_TO_INDEX
+
+    augmentation = build_augmentation(
+        "dihedral8",
+        probability=0.0,
+        class_probabilities={"Scratch": 1.0, "Near-full": 1.0},
+    )
+    wafer = _wafer()
+    seed_everything(86)
+
+    majority = sum(
+        not torch.equal(augmentation(wafer, CLASS_TO_INDEX["none"]), wafer)
+        for _ in range(60)
+    )
+    rare = sum(
+        not torch.equal(augmentation(wafer, CLASS_TO_INDEX["Scratch"]), wafer)
+        for _ in range(60)
+    )
+
+    assert majority == 0
+    # dihedral8 includes the identity, so a few draws are unchanged by chance
+    assert rare > 40
+
+
+def test_an_unknown_class_name_is_rejected() -> None:
+    with pytest.raises(ValueError, match="Unknown class"):
+        build_augmentation("dihedral8", class_probabilities={"Scratches": 1.0})
+
+
+def test_rotation_refuses_per_class_probabilities() -> None:
+    """Uneven resampling makes 'looks resampled' predict the rare classes."""
+
+    with pytest.raises(ValueError, match="leaks the label"):
+        build_augmentation("rotation", class_probabilities={"Scratch": 1.0})
+
+
+def test_uniform_augmentation_ignores_the_class_index() -> None:
+    augmentation = build_augmentation("dihedral8")
+    wafer = _wafer()
+    seed_everything(86)
+    with_class = [augmentation(wafer, 3) for _ in range(10)]
+    seed_everything(86)
+    without_class = [augmentation(wafer) for _ in range(10)]
+
+    assert all(
+        torch.equal(a, b) for a, b in zip(with_class, without_class, strict=True)
+    )
+
+
 def test_attention_preserves_shape_and_is_learnable() -> None:
     block = CBAM(16)
     inputs = torch.rand(2, 16, 12, 12)

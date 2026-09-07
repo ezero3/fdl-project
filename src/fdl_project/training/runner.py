@@ -123,6 +123,9 @@ def build_datasets(
                 build_augmentation(
                     config.data.augmentation.name,
                     probability=config.data.augmentation.probability,
+                    class_probabilities=dict(
+                        config.data.augmentation.class_probabilities
+                    ),
                     **dict(config.data.augmentation.kwargs),
                 )
                 if split_name == "train"

@@ -37,6 +37,14 @@ data:
     name: null
     probability: 1.0
     kwargs: {}            # rotation takes: {degrees: 180.0}
+    # Optional: augment some classes more than others. Classes not listed keep
+    # `probability`. Only the exact-permutation options may vary by class --
+    # `rotation` resamples, and applying that unevenly would let the network
+    # read the augmentation as a class hint instead of learning the defect.
+    # Note the weighted sampler already compounds with augmentation: a rare
+    # wafer drawn 40x an epoch already yields 40 different views.
+    #   class_probabilities: {Scratch: 1.0, Near-full: 1.0, none: 0.0}
+    class_probabilities: {}
 
 # The validated policy from the class-imbalance experiment. Presets:
 # unweighted_ce, inverse_sqrt_ce, effective_number_ce, inverse_sqrt_sampler,
