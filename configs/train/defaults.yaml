@@ -100,11 +100,12 @@ trainer:
   early_stopping:
     monitor: validation_macro_f1
     mode: max
-    # Raised from 5 after the phase-2 sweep: validation macro-F1 is noisy
-    # enough that patience 5 ended unregularised arms at epoch 10 while
-    # regularised ones ran to 28, so the comparison partly measured which arm
-    # survived early stopping rather than which arm was better.
-    patience: 10
+    # 7, chosen by replaying the phase-2 histories at 5/7/10. Patience 5
+    # would have stopped the best arm (free-angle rotation) at epoch 17 with
+    # 0.8544 and missed the 0.8800 it reached at epoch 36 -- that arm climbs
+    # slowly, with improvement gaps longer than 5 epochs. Patience 7 finds
+    # every result 10 does while stopping ~20% earlier.
+    patience: 7
     min_epochs: 5
 
 checkpoint:
