@@ -8,7 +8,7 @@ from torch.nn import functional as F
 from torch.utils.data import Dataset, TensorDataset
 
 from fdl_project.constants import NUM_CLASSES
-from fdl_project.imbalance import (
+from fdl_project.data.imbalance import (
     DEFAULT_IMBALANCE_CONFIG,
     PRESET_IMBALANCE_CONFIGS,
     FocalLoss,
@@ -20,13 +20,13 @@ from fdl_project.imbalance import (
     create_imbalance_training_dataloader,
     imbalance_metadata,
 )
-from fdl_project.imbalance_experiment import (
+from fdl_project.analysis.imbalance_experiment import (
     ImbalanceExperimentConfig,
     categorical_one_hot_collate,
     create_experiment_dataloader,
 )
-from fdl_project.models import BaselineCNN, count_trainable_parameters
-from fdl_project.training import TrainingConfig, fit_model, set_reproducible_seed
+from fdl_project.models.baseline_cnn import BaselineCNN, count_trainable_parameters
+from fdl_project.training.loop import TrainingConfig, fit_model, set_reproducible_seed
 
 TRAIN_COUNTS = torch.tensor(
     [3006, 389, 3632, 6776, 2516, 104, 606, 835, 103199],

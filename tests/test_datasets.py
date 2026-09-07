@@ -6,7 +6,7 @@ import pytest
 import torch
 
 from fdl_project.constants import CLASS_NAMES, CLASS_TO_INDEX
-from fdl_project.datasets import (
+from fdl_project.data.datasets import (
     WM811KDataset,
     create_dataloader,
     create_split_dataset,
@@ -14,7 +14,7 @@ from fdl_project.datasets import (
     load_wm811k_dataframe,
     normalize_scalar_label,
 )
-from fdl_project.preprocessing import PreprocessingConfig
+from fdl_project.data.preprocessing import PreprocessingConfig
 
 
 def _toy_dataframe() -> pd.DataFrame:

@@ -5,7 +5,7 @@ from __future__ import annotations
 from torch import Tensor, nn
 
 from fdl_project.constants import NUM_CLASSES
-from fdl_project.preprocessing import WAFER_STATE_COUNT
+from fdl_project.data.preprocessing import WAFER_STATE_COUNT
 
 
 class BaselineCNN(nn.Module):

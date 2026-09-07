@@ -19,9 +19,9 @@ from torch.nn import functional as F
 from torch.utils.data import DataLoader, TensorDataset, default_collate
 
 from fdl_project.constants import CLASS_NAMES
-from fdl_project.datasets import create_split_dataset, load_wm811k_dataframe
+from fdl_project.data.datasets import create_split_dataset, load_wm811k_dataframe
 from fdl_project.evaluation import evaluate_model, save_evaluation_results
-from fdl_project.imbalance import (
+from fdl_project.data.imbalance import (
     PRESET_IMBALANCE_CONFIGS,
     ImbalanceConfig,
     build_training_loss,
@@ -29,9 +29,9 @@ from fdl_project.imbalance import (
     compute_class_counts,
     compute_class_weights,
 )
-from fdl_project.models import BaselineCNN, count_trainable_parameters
-from fdl_project.preprocessing import DEFAULT_PREPROCESSING_CONFIG
-from fdl_project.training import TrainingConfig, fit_model, set_reproducible_seed
+from fdl_project.models.baseline_cnn import BaselineCNN, count_trainable_parameters
+from fdl_project.data.preprocessing import DEFAULT_PREPROCESSING_CONFIG
+from fdl_project.training.loop import TrainingConfig, fit_model, set_reproducible_seed
 
 
 @dataclass(frozen=True)

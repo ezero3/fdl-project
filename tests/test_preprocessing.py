@@ -2,7 +2,7 @@ import numpy as np
 import pytest
 import torch
 
-from fdl_project.preprocessing import (
+from fdl_project.data.preprocessing import (
     DEFAULT_PREPROCESSING_CONFIG,
     PreprocessingConfig,
     WaferMapPreprocessor,
@@ -10,7 +10,7 @@ from fdl_project.preprocessing import (
     transform_categorical_map,
     validate_wafer_map,
 )
-from fdl_project.preprocessing_analysis import benchmark_preprocessors
+from fdl_project.analysis.preprocessing_analysis import benchmark_preprocessors
 
 SAMPLE_MAP = np.array(
     [

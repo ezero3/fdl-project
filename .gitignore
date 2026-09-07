@@ -48,3 +48,6 @@ Thumbs.db
 
 # Local Claude Code audit log
 .claude/audit.jsonl
+
+# Local planning scratch
+_plans/

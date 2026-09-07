@@ -12,7 +12,7 @@ from torch import Tensor
 from torch.utils.data import DataLoader, Dataset
 
 from fdl_project.constants import encode_label
-from fdl_project.preprocessing import (
+from fdl_project.data.preprocessing import (
     DEFAULT_PREPROCESSING_CONFIG,
     PreprocessingConfig,
     WaferMapPreprocessor,
