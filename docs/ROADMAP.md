@@ -51,7 +51,7 @@ Write model weights, optimizer state, epoch number and RNG state to Drive at the
 Two built by us, one pretrained, per the course requirement.
 
 - **From scratch:** the existing small CNN is the baseline; a second, deeper design is one of ours.
-- **Pretrained:** MobileNetV3 or ResNet18, **fine-tuned or built upon — not used as a frozen feature extractor.** Train the whole network, but give the pretrained encoder a much smaller learning rate than the newly initialised head (10–100× smaller is the usual range). Freezing is the fallback if memory forces it, not the plan.
+- **Pretrained:** MobileNetV3 or ResNet18, **fine-tuned or built upon — not used as a frozen feature extractor.** Train the whole network, but give the pretrained encoder a much smaller learning rate than the newly initialised head (10–100× smaller is the usual range). Freezing the encoder is also worth one run as a cheap, fast baseline — it trains in minutes and tells you how much the fine-tuning actually buys — but it is a comparison point, not the plan.
 - Use a **learning-rate schedule**; cosine annealing with a short warmup is a sensible default.
 - Pretrained backbones need **224×224 input** rather than 64×64, because their filters expect that scale. This is a config change, not new code.
 
@@ -100,16 +100,37 @@ Optional sixth imbalance strategy: limit the majority class to ~12k images **per
 *Why:* keeps all the hard negatives available across training while reducing per-epoch dominance.
 *Done when:* it has been screened on validation like the other strategies, and the better one is used.
 
+### 12. Free post-hoc wins — do these near the end
+Three techniques that need no retraining and are close to free:
+
+- **Test-time augmentation:** average predictions over the same 8 symmetries used for training augmentation. Costs 8× inference (seconds), typically worth 1–2 points of macro-F1, and is entirely legitimate — it never touches labels.
+- **Per-class decision thresholds** tuned on validation to maximise macro-F1, rather than always taking the arg-max.
+- **Ensemble** the three final models by averaging their probabilities.
+
+*Why:* the cheapest remaining accuracy in the whole project, and all three are standard practice worth showing.
+*Done when:* each is measured on validation, and only the ones that actually help are used for the final test evaluation.
+
+### 13. Alternative long-tail methods worth one run each
+Two well-established techniques we have not tried, both cheap:
+
+- **Logit adjustment:** add the log of each class's training frequency to its logit. One line of code, principled, and often matches or beats resampling.
+- **Two-stage (decoupled) training:** train the network on the natural distribution, then freeze the features and retrain only the final classifier layer with balanced sampling. Known to beat one-stage resampling on long-tailed data, and the second stage takes minutes.
+
+*Why:* our current policy was chosen from five candidates under a 4-epoch budget; these are strong candidates that were never in that comparison.
+*Done when:* each is screened on validation against the current sampler, on the fixed test-bed model.
+
 ---
 
 ## P3 — Stretch, only with spare time
 
-### 12. Self-supervised pretraining on the unlabeled data
+### 14. Self-supervised pretraining on the unlabeled data
 ~617k unlabeled wafers are available and already filtered so none of them come from validation or test groups. Pretrain an autoencoder on them, then fine-tune a classifier head on the labeled set. Reconstruct pixels as a **3-way classification per pixel**, not regression — otherwise the decoder outputs meaningless in-between values.
 
 *Rough cost:* ~30 minutes of GPU pretraining; most of the effort is in the fine-tuning protocol.
 
-### 13. LoRA fine-tuning of a larger pretrained model
+*Alternative worth knowing:* a Mean Teacher setup with a supervised contrastive loss is published on this exact dataset and reports a ~4.5 point F1 gain over a plain ResNet18 baseline. It uses unlabeled data through prediction consistency rather than reconstruction, which is often easier to get working than an autoencoder. See `design-notes.md` §12.
+
+### 15. LoRA fine-tuning of a larger pretrained model
 Adapt a backbone too large to fine-tune outright (a ViT, say) by training small low-rank adapters while the original weights stay fixed. Memory-cheap, and an unusual technique to show in a course project.
 
 *Why:* it turns "too big to fine-tune, so we froze it" into "too big to fine-tune, so we adapted it properly".
@@ -123,4 +144,6 @@ Adapt a backbone too large to fine-tune outright (a ViT, say) by training small 
 
 ## If time runs short
 
-Items **1–8** are the minimum for a submission that stands up to questions. Items 9–11 are where the remaining accuracy is. Items 12–13 are stretch, and good presentation material either way.
+Items **1–8** are the minimum for a submission that stands up to questions. Items 9–13 are where the remaining accuracy is — **12 is the cheapest of all and should not be skipped**. Items 14–15 are stretch, and good presentation material either way.
+
+External benchmarks and why most published WM-811K numbers are not comparable to ours: `design-notes.md` §12. Read it before quoting anyone's accuracy.

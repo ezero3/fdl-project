@@ -158,3 +158,23 @@ GPU random state itself is already correct — `torch.manual_seed` seeds all dev
 **Colab.** Install the package with `pip install -e . --no-deps` rather than syncing the lock file — Colab's PyTorch is matched to its driver, and a lock-driven install can replace it with a build that does not match. Keep the dataset on Drive rather than re-downloading each session. Record the actual torch version in run metadata so the divergence from the local lock is visible.
 
 **Logging.** The training loop already accepts a per-epoch callback receiving a flat metrics dict, which matches what experiment trackers expect, so no changes to the training code are needed. Use a private project — the repository is private, and a public tracker project would publish metrics, configs and confusion matrices.
+
+## 12. External results, and why most of them are not comparable
+
+Published WM-811K numbers vary from ~79% to ~99% accuracy, and almost none of them measure the same thing we do. Before quoting any of them, check three things: whether the **test** distribution is natural or rebalanced, whether all nine classes are used, and whether the metric is accuracy or macro-F1.
+
+The headline figures in the ~98–99% range are typically obtained on a **balanced subset** of the nine classes. On the natural distribution the majority class alone is ~85–89% of the data, so accuracy above 95% is nearly free and says almost nothing — our own selected run reaches 0.9562 accuracy with a macro-F1 of 0.7956. Those numbers are not evidence that we are far behind; they answer a different question.
+
+One comparable reference point, Wei et al., *Utilizing the Mean Teacher with Supcontrast Loss for Wafer Pattern Recognition* (arXiv:2411.18533, 2024), uses all nine classes on WM-811K with a ResNet18, trains on 10% labeled data with the rest as unlabeled, and rebalances training with SMOTE plus undersampling:
+
+| Method | Accuracy | F1 |
+|---|---:|---:|
+| ResNet18 baseline | 79.17% | 78.87% |
+| + Mean Teacher | 81.14% | 81.29% |
+| + SupCon loss | 84.13% | 82.98% |
+| + Mean Teacher & SupCon | 84.63% | 83.40% |
+
+Their per-class F1 for the baseline is worth reading even though the protocol differs: `Loc` 50.26, `Edge-Loc` 59.63, `Scratch` 64.72, against `Near-full` 96.03 and `Edge-Ring` 94.27. **The hard classes are the same ones that are hard for us** — the localized and linear defects — which is a useful independent confirmation that our weak spots are properties of the problem rather than bugs in our pipeline.
+
+Note their `None` F1 is only 74.62, far below ours (0.9815), which is the clearest sign their evaluation distribution is rebalanced rather than natural. Read their numbers as a ranking of methods, not as a target to beat.
+

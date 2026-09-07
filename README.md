@@ -103,7 +103,7 @@ The policy was selected through a full-data controlled PyTorch experiment: five 
 
 ## Roadmap and design decisions
 
-[`docs/ROADMAP.md`](docs/ROADMAP.md) lists what remains to be built, in order, with a short statement of why each item matters and what counts as done. [`docs/design-notes.md`](docs/design-notes.md) records the reasoning and measurements behind each decision, including the options that were considered and rejected. Read the notes before changing a decision; read the roadmap to pick up a task.
+[`docs/ROADMAP.md`](docs/ROADMAP.md) lists what remains to be built, in order, with a short statement of why each item matters and what counts as done. [`docs/design-notes.md`](docs/design-notes.md) records the reasoning and measurements behind each decision, including the options that were considered and rejected. Read the notes before changing a decision; read the roadmap to pick up a task. The notes also record how published WM-811K results compare to ours, and why most of them measure a different task.
 
 ## References
 
