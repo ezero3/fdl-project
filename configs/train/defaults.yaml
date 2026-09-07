@@ -94,7 +94,11 @@ trainer:
   early_stopping:
     monitor: validation_macro_f1
     mode: max
-    patience: 5
+    # Raised from 5 after the phase-2 sweep: validation macro-F1 is noisy
+    # enough that patience 5 ended unregularised arms at epoch 10 while
+    # regularised ones ran to 28, so the comparison partly measured which arm
+    # survived early stopping rather than which arm was better.
+    patience: 10
     min_epochs: 5
 
 checkpoint:
