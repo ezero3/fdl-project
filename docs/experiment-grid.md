@@ -12,15 +12,23 @@ All on `baseline_cnn` at 64x64, validation macro-F1, patience 10.
 | **Free-angle rotation is the only intervention that cleared its interval** | 0.8800 vs baseline 0.8173; `Scratch` 0.376 -> 0.732 |
 | Composing rotation with `dihedral8` does not beat rotation alone | 0.8677 vs 0.8800 |
 | Imbalance handling is **not** the binding constraint | every arm inside +-0.013: sampler 0.8173, unweighted 0.8160, focal 0.8246 |
-| Focal without the sampler is clearly worse | ~0.70 against ~0.78 with it, on `baseline_v2` |
-| Focal **with** the sampler is indistinguishable from the sampler alone | 0.7828 vs 0.7830 |
+| Focal loss makes no measurable difference | best arm +0.0042 against a 0.010 noise floor (`baseline_cnn`, 4 arms) |
+| Focal without the sampler *looked* catastrophic on `baseline_v2` (~0.70 vs ~0.78) but not on `baseline_cnn` (-0.007) | a `baseline_v2` artifact, not a property of focal |
+| The sampler's own gain is **not** established at full budget | unweighted 0.8160 vs sampler 0.8173 in phase 2; +0.011 in v26 but the no-sampler arms were truncated at the epoch cap |
 | CBAM adds nothing | 0.8158 vs 0.8173 |
 | Grayscale encoding is worse than one-hot | 0.8042 vs 0.8173 |
 | 224x224 does not pay for itself | 0.8321 for 6.4x the compute; interval overlaps the baseline |
 | **`baseline_v2` is worse than `baseline_cnn` once rotation is on** | ~0.80 vs ~0.87 at 50 epochs; the 157k -> 34k cut removed capacity to fix overfitting that rotation had already fixed |
 
+**The noise floor, measured directly.** The identical config -- `baseline_cnn` + rotation +
+sampler -- scored **0.8800** and **0.8696** on two runs. That 0.010 spread comes from
+nondeterminism alone (deterministic kernels are off for speed), and it is nearly as large as
+the entire spread of the six-arm focal series. Any difference under ~0.01 is unmeasurable
+with one seed.
+
 Caveat on all of it: single seed, and validation has been selected on heavily, so roughly
-+0.02 of optimism is priced in. Only the rotation result is large enough to survive that.
++0.02 of optimism is priced in on top. **Only the rotation result is large enough to survive
+both.**
 
 `—` = not applicable. `▪` = the default pipeline.
 Defaults: 64×64 letterbox one-hot · no augmentation · `inverse_sqrt_sampler` · no attention ·
@@ -100,6 +108,10 @@ so would answer a narrower question: `rotations` (C4) and `flips` (Klein four-gr
 | model | unweighted_ce | inverse_sqrt_sampler ▪ | focal_loss |
 |---|---|---|---|
 | `baseline_cnn` | 0.8160 | 0.8173 | 0.8246 |
+| `baseline_cnn` + rotation | — | 0.8696 / 0.8800 | 0.8600 – 0.8624 (truncated) |
+| `baseline_cnn` + rotation, focal **and** sampler | — | — | γ1 0.8738 · γ2 0.8711 |
+| `baseline_v2` + rotation | — | 0.7830 | 0.7201 – 0.7250 |
+| `baseline_v2` + rotation, focal **and** sampler | — | — | γ1 0.7724 · γ2 0.7828 |
 | `dilated_style` | | | |
 | `densenet_style` | | |
 | `convnext_style` | | | |
