@@ -28,6 +28,7 @@ from torch import Tensor, nn
 
 from fdl_project.constants import NUM_CLASSES
 from fdl_project.data.preprocessing import WAFER_STATE_COUNT
+from fdl_project.models.attention import build_attention
 
 #: Torchvision factory name and default pretrained weights enum per architecture.
 SUPPORTED_ARCHITECTURES: dict[str, str] = {
@@ -39,20 +40,40 @@ SUPPORTED_ARCHITECTURES: dict[str, str] = {
 }
 
 
-def _split_backbone(model: nn.Module, architecture: str) -> tuple[nn.Module, int]:
-    """Return the feature extractor and the width of its output."""
+def _feature_width(model: nn.Module, architecture: str) -> int:
+    """The channel count the backbone produces before its own classifier."""
 
     if architecture.startswith("resnet"):
-        in_features = model.fc.in_features
-        model.fc = nn.Identity()
-        return model, in_features
+        return model.fc.in_features
     # mobilenet_v3_* and efficientnet_b0 both end in a Sequential classifier
     # whose first Linear carries the feature width.
-    classifier = model.classifier
-    linear_layers = [layer for layer in classifier if isinstance(layer, nn.Linear)]
+    linear_layers = [
+        layer for layer in model.classifier if isinstance(layer, nn.Linear)
+    ]
     if not linear_layers:
         raise ValueError(f"Cannot locate the classifier head of {architecture!r}.")
-    in_features = linear_layers[0].in_features
+    return linear_layers[0].in_features
+
+
+def _split_backbone(
+    model: nn.Module, architecture: str, *, keep_spatial: bool
+) -> tuple[nn.Module, int]:
+    """Return the feature extractor and the width of its output.
+
+    ``keep_spatial`` stops before the backbone's global pooling, leaving a
+    (batch, channels, height, width) map. Attention needs that: after pooling
+    there is no spatial extent left to weigh.
+    """
+
+    in_features = _feature_width(model, architecture)
+    if architecture.startswith("resnet"):
+        if keep_spatial:
+            # children()[:-2] drops avgpool and fc, keeping conv1..layer4.
+            return nn.Sequential(*list(model.children())[:-2]), in_features
+        model.fc = nn.Identity()
+        return model, in_features
+    if keep_spatial:
+        return model.features, in_features
     model.classifier = nn.Identity()
     return model, in_features
 
@@ -72,6 +93,7 @@ class PretrainedClassifier(nn.Module):
         pretrained: bool = True,
         dropout: float = 0.2,
         freeze_encoder: bool = False,
+        attention: str | None = None,
         **backbone_kwargs: Any,
     ) -> None:
         super().__init__()
@@ -97,11 +119,22 @@ class PretrainedClassifier(nn.Module):
         backbone = getattr(torchvision_models, architecture)(
             weights=weights, **backbone_kwargs
         )
-        encoder, in_features = _split_backbone(backbone, architecture)
+        keep_spatial = attention is not None
+        encoder, in_features = _split_backbone(
+            backbone, architecture, keep_spatial=keep_spatial
+        )
 
         self.architecture = architecture
         self.pretrained = pretrained
         self.encoder = encoder
+        self.attention = build_attention(attention, in_features) or nn.Identity()
+        # Only needed when attention kept the spatial map alive; the stock
+        # backbones pool internally.
+        self.pool = (
+            nn.Sequential(nn.AdaptiveAvgPool2d(1), nn.Flatten())
+            if keep_spatial
+            else nn.Identity()
+        )
         self.head = nn.Sequential(
             nn.Dropout(dropout),
             nn.Linear(in_features, NUM_CLASSES),
@@ -124,4 +157,4 @@ class PretrainedClassifier(nn.Module):
             )
         if not inputs.is_floating_point():
             raise TypeError("PretrainedClassifier inputs must be floating-point.")
-        return self.head(self.encoder(inputs))
+        return self.head(self.pool(self.attention(self.encoder(inputs))))
