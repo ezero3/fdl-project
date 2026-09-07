@@ -71,6 +71,12 @@ def _densenet_style(**kwargs: Any) -> nn.Module:
     return WaferDenseNet(**kwargs)
 
 
+def _baseline_v2(**kwargs: Any) -> nn.Module:
+    from fdl_project.models.baseline_cnn import BaselineCNNv2
+
+    return BaselineCNNv2(**kwargs)
+
+
 def _convnext_style(**kwargs: Any) -> nn.Module:
     from fdl_project.models.convnext import WaferConvNeXt
 
@@ -97,6 +103,7 @@ MODEL_REGISTRY: dict[str, ModelBuilder] = {
     "resnet_style": _resnet_style,
     "inception_style": _inception_style,
     "dilated_style": _dilated_style,
+    "baseline_v2": _baseline_v2,
     "densenet_style": _densenet_style,
     "convnext_style": _convnext_style,
     "vit_style": _vit_style,

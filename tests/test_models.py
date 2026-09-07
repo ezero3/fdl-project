@@ -230,3 +230,48 @@ def test_layer_scale_starts_each_block_near_the_identity() -> None:
     inputs = torch.rand(2, 16, 8, 8)
 
     assert torch.allclose(block(inputs), inputs, atol=1e-3)
+
+
+# -- baseline v2 -----------------------------------------------------------
+
+
+def test_v2_global_pooling_removes_the_layer_that_overfits() -> None:
+    """84% of the original's parameters sit in one 1024->128 linear. Global
+    average pooling deletes it; pooled_size=4 recovers the original head, so
+    the two changes can be attributed separately."""
+
+    original = build_model("baseline_cnn")
+    pooled = build_model("baseline_v2", pooled_size=4)
+    global_average = build_model("baseline_v2")
+
+    assert count_trainable_parameters(pooled) == count_trainable_parameters(original)
+    assert count_trainable_parameters(global_average) < count_trainable_parameters(original) / 4
+
+
+def test_v2_keeps_the_stem_identical_to_v1() -> None:
+    """A comparison between them has to be about the head, nothing else."""
+
+    original = build_model("baseline_cnn")
+    v2 = build_model("baseline_v2", block_dropout=0.0)
+
+    convolutions = lambda model: [
+        (m.in_channels, m.out_channels, m.kernel_size, m.stride)
+        for m in model.features.modules()
+        if isinstance(m, nn.Conv2d)
+    ]
+    assert convolutions(v2) == convolutions(original)
+
+
+def test_v2_uses_channel_dropout_not_cell_dropout() -> None:
+    """Ordinary dropout on a feature map is largely undone by spatial
+    correlation; Dropout2d drops whole channels."""
+
+    v2 = build_model("baseline_v2", block_dropout=0.1)
+
+    assert any(isinstance(m, nn.Dropout2d) for m in v2.features.modules())
+
+
+@pytest.mark.parametrize("kwargs", [{"dropout": 1.0}, {"block_dropout": -0.1}, {"pooled_size": 0}])
+def test_v2_rejects_invalid_settings(kwargs: dict) -> None:
+    with pytest.raises(ValueError):
+        build_model("baseline_v2", **kwargs)

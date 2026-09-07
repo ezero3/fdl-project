@@ -1,0 +1,24 @@
+# The baseline with its overfitting addressed, stem held identical.
+#
+# Phase 2 showed the original hits 98.6% train accuracy by epoch 12 while
+# validation stalls -- and that 84% of its parameters are in a single
+# 1024->128 linear. Global average pooling removes that layer (157k -> 34k)
+# and Dropout2d regularises the convolutional features.
+#
+# To isolate the two changes, run this with `--override model.kwargs.pooled_size=4`:
+# that recovers the original head shape, leaving only the dropout difference.
+name: baseline-v2-64
+
+model:
+  name: baseline_v2
+  kwargs:
+    pooled_size: 1        # 1 = global average pooling
+    block_dropout: 0.1    # Dropout2d between convolution stages
+    dropout: 0.4          # head dropout, was 0.2
+
+scheduler:
+  name: cosine_with_warmup
+  interval: epoch
+  kwargs:
+    warmup_epochs: 2
+    min_lr_ratio: 0.01
