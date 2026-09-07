@@ -54,3 +54,8 @@ Thumbs.db
 
 # Local planning scratch
 _plans/
+
+# Per-run training artifacts: predictions, confusion matrices and model
+# weights. Small result summaries (output/phase0/, output/phase2/results.csv)
+# are committed; these are not.
+output/runs/
