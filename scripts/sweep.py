@@ -43,7 +43,12 @@ LOGGER = logging.getLogger("sweep")
 #: The config every arm varies from. The sweep is only controlled if this is
 #: the one thing that never changes.
 BASE_CONFIG = Path("configs/train/baseline_cnn_64.yaml")
-RESULTS = Path("output/phase2/results.csv")
+
+#: Default results file. On Colab this is local disk, which dies with the
+#: session -- so when the checkpoint directory is on Drive, the results are
+#: mirrored there too. Checkpoints surviving a disconnect while the results
+#: table did not is a trap worth closing.
+DEFAULT_RESULTS = Path("output/phase2/results.csv")
 
 
 @dataclass(frozen=True)
@@ -100,6 +105,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--rerun", action="store_true",
                         help="Repeat arms that already have results.")
     parser.add_argument("--bootstrap-resamples", type=int, default=1000)
+    parser.add_argument("--results", type=Path, default=DEFAULT_RESULTS,
+                        help="Results CSV. Mirrored to Drive automatically when "
+                             "the checkpoint directory is on Drive.")
     parser.add_argument(
         "--tag", default="",
         help=(
@@ -158,25 +166,42 @@ def verify_checkpoint_directory(directory: Path) -> None:
         print("  WARNING: under 5 GiB free; a long sweep may run out mid-run.")
 
 
-def completed_runs() -> set[str]:
-    """Arm names already recorded, so a resumed sweep does not repeat work."""
+def results_paths(results: Path, checkpoint_directory: Path) -> list[Path]:
+    """Where to append results: locally, and on Drive when one is in use."""
 
-    if not RESULTS.is_file():
-        return set()
-    with RESULTS.open() as handle:
-        return {row["run"] for row in csv.DictReader(handle)}
+    paths = [results]
+    if "/drive/" in str(checkpoint_directory):
+        # Same durability as the checkpoints, for the same reason.
+        paths.append(Path(checkpoint_directory).parent / results.name)
+    return paths
 
 
-def record(row: dict) -> None:
+def completed_runs(paths: list[Path]) -> set[str]:
+    """Arm names already recorded, so a resumed sweep does not repeat work.
+
+    Read across every destination: after a lost VM the Drive copy may be the
+    only one left, and it is what lets the sweep pick up where it stopped.
+    """
+
+    done: set[str] = set()
+    for path in paths:
+        if path.is_file():
+            with path.open() as handle:
+                done |= {row["run"] for row in csv.DictReader(handle)}
+    return done
+
+
+def record(row: dict, paths: list[Path]) -> None:
     """Append one result immediately -- a crash must not lose earlier arms."""
 
-    RESULTS.parent.mkdir(parents=True, exist_ok=True)
-    exists = RESULTS.is_file()
-    with RESULTS.open("a", newline="") as handle:
-        writer = csv.DictWriter(handle, fieldnames=list(row))
-        if not exists:
-            writer.writeheader()
-        writer.writerow(row)
+    for path in paths:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        exists = path.is_file()
+        with path.open("a", newline="") as handle:
+            writer = csv.DictWriter(handle, fieldnames=list(row))
+            if not exists:
+                writer.writeheader()
+            writer.writerow(row)
 
 
 def main() -> None:
@@ -195,9 +220,11 @@ def main() -> None:
 
     # The model is part of every run name: `baseline_cnn-dihedral8-s86` says
     # what it is from the directory listing alone, without opening the CSV.
-    model = load_experiment_config(args.config).model.name
+    resolved = load_experiment_config(args.config, overrides=args.override)
+    model = resolved.model.name
+    destinations = results_paths(args.results, Path(resolved.checkpoint.directory))
     tag = f"-{args.tag}" if args.tag else ""
-    done = set() if args.rerun else completed_runs()
+    done = set() if args.rerun else completed_runs(destinations)
     planned = [
         (arm, seed) for arm in selected for seed in args.seeds
         if args.rerun or f"{model}-{arm.name}{tag}-s{seed}" not in done
@@ -206,10 +233,9 @@ def main() -> None:
         print("Nothing to do: every selected arm already has a result.")
         return
 
-    verify_checkpoint_directory(
-        Path(load_experiment_config(args.config, overrides=args.override)
-             .checkpoint.directory)
-    )
+    verify_checkpoint_directory(Path(resolved.checkpoint.directory))
+    for path in destinations:
+        print(f"results     -> {path}")
     print(f"{len(planned)} run(s) to go; {len(done)} already recorded.\n")
     dataframe = load_wm811k_dataframe(
         load_experiment_config(args.config).data.dataset_path
@@ -246,7 +272,7 @@ def main() -> None:
                 "minutes": round((time.monotonic() - started) / 60, 1),
                 "overrides": " ".join(arm.overrides),
                 "note": arm.note,
-            })
+            }, destinations)
             print(f"    macro-F1 {macro.point_estimate:.4f} "
                   f"[{macro.ci_lower:.4f}, {macro.ci_upper:.4f}]  "
                   f"best epoch {result.fit.best_epoch}/{len(result.fit.history)}  "
@@ -259,9 +285,10 @@ def main() -> None:
                 "macro_f1": "", "ci_lower": "", "ci_upper": "", "best_epoch": "",
                 "epochs_run": "", "minutes": round((time.monotonic() - started) / 60, 1),
                 "overrides": " ".join(arm.overrides), "note": f"FAILED: {error}",
-            })
+            }, destinations)
 
-    print(f"Results: {RESULTS.resolve()}")
+    for path in destinations:
+        print(f"Results: {path.resolve()}")
 
 
 if __name__ == "__main__":
