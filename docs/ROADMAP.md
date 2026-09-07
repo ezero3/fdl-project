@@ -19,6 +19,7 @@ Priorities: **P0** blocks other people, **P1** is needed for a defensible submis
 > - `CheckpointManager` writes `best.pt` plus a small rolling window of recent epochs (the newest is what resume reads) to any directory (point it at mounted Drive on Colab), atomically, and resumes the whole run — optimizer, schedule, scaler, epoch, best-so-far, history and RNG state.
 > - W&B is a callback, off by default; turn it on per config. Logs the aggregate metrics, the learning rate and **per-class F1** each epoch, with the resolved config attached. See "Metric logging" below for what to set up on the platform.
 > - `data.cache: true` copies the split's raw uint8 maps into memory and releases the 2 GB source table (item 7).
+> - Dihedral-8 augmentation (item 10), CBAM attention on any backbone (item 11), and TTA plus per-class thresholds (item 13) are all implemented and configurable.
 > - `src/fdl_project/` is now split into `config/ data/ models/ training/ evaluation/ analysis/`.
 >
 > Still open in P0/P1: three models (item 5), the final report with intervals (8), and qualitative error analysis (9).
@@ -127,13 +128,36 @@ Use the 8 exact symmetries — 4 rotations by 90° and their mirrors. These are 
 **Do not use free-angle rotation** (destroys thin scratch patterns) and **be careful with translation**: shifting a localized defect toward the wafer edge can genuinely turn a `Loc` into an `Edge-Loc` while keeping the old label.
 
 *Why:* the minority classes are oversampled with replacement today, so the model sees the same handful of images repeatedly. Augmentation turns each repeat into a different view — the two techniques compound.
-*Done when:* augmentation applies to training only, validation and test are provably untouched, and a fixed seed reproduces the same views.
+*Done when:* augmentation applies to training only, validation and test are provably untouched, and a fixed seed reproduces the same views. ✅
+
+Configured per experiment; off by default:
+
+```yaml
+data:
+  augmentation:
+    name: dihedral8      # null | dihedral8
+    probability: 1.0
+```
+
+`WM811KDataset` **raises** if augmentation is passed with a validation or test split, so "provably untouched" is enforced rather than remembered. Views are drawn from torch's seeded RNG, which `seed_worker` re-seeds per dataloader worker. Free-angle rotation and translation are not reachable from config at all — the registry has one entry.
 
 ### 11. Attention block on one backbone
 Defects occupy a small fraction of each image, which is the standard case for spatial attention (e.g. CBAM).
 
 *Why:* cheap, plausible gain, and a good comparison to show in the presentation.
-*Done when:* one backbone is reported with and without it, everything else held fixed.
+*Done when:* one backbone is reported with and without it, everything else held fixed. ⏳ *(implemented; the comparison run is still to do)*
+
+CBAM is available on every model as a kwarg, so any config can turn it on:
+
+```yaml
+model:
+  name: baseline_cnn     # or resnet18, mobilenet_v3_small, ...
+  kwargs: {attention: cbam}
+```
+
+It is placed **before** global pooling — after pooling there is no spatial extent left to weigh — which for a torchvision backbone means the encoder is built without its own pooling layer when attention is requested. Cost on the baseline CNN is 610 parameters (157,547 vs 156,937).
+
+`configs/train/baseline_cnn_64_augmented.yaml` turns on augmentation *and* attention together. That is the combined arm; run them separately to attribute a gain to either.
 
 ### 12. Cap majority-class exposure per epoch
 Optional sixth imbalance strategy: limit the majority class to ~12k images **per epoch, resampled each epoch**, rather than deleting rows permanently. Compare it on validation against the current policy.
@@ -148,7 +172,18 @@ Two techniques that need no retraining:
 - **Per-class decision thresholds** tuned on validation to maximise macro-F1, instead of always taking the arg-max.
 
 *Why:* the cheapest remaining accuracy in the project.
-*Done when:* each is measured on validation, and only the ones that actually help are used for the single test evaluation.
+*Done when:* each is measured on validation, and only the ones that actually help are used for the single test evaluation. ✅ *(implemented and measured; apply to the final models)*
+
+```bash
+# measure on validation, fit the weights
+scripts/inference.py --checkpoint <ckpt> --split validation --tta --tune-thresholds
+# reuse those exact weights for the one test evaluation
+scripts/inference.py --checkpoint <ckpt> --split test --final-test-evaluation     --tta --class-weights output/runs/<name>-validation/class_weights.json
+```
+
+Thresholds are fitted by coordinate ascent on macro-F1 over one multiplier per class, and `--tune-thresholds` **refuses any split but validation** — fitting them on test would be selecting on the frozen split. The fitted weights are saved with the class encoding attached and rejected on load if it differs.
+
+**Early measurement**, on a deliberately undertrained 6-epoch baseline, so treat the magnitudes as indicative: plain arg-max 0.6130, +TTA 0.6190, +thresholds **0.6614**. TTA is worth a fraction of a point; thresholds were worth about four, which fits the reason — arg-max implicitly favours the majority class while macro-F1 weights all nine equally.
 
 *Deliberately excluded:* ensembling the three final models. It would raise the headline number, but it is competition tuning rather than a deep-learning result, and it obscures the architecture comparison that the report is actually about.
 
