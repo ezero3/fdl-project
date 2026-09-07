@@ -26,10 +26,15 @@ from fdl_project.data.datasets import (
 from fdl_project.evaluation import (
     BootstrapResult,
     EvaluationResult,
+    apply_class_weights,
     bootstrap_evaluation,
     collect_predictions,
+    collect_predictions_with_tta,
     evaluate_predictions,
+    load_class_weights,
+    save_class_weights,
     save_evaluation_results,
+    tune_class_weights,
 )
 from fdl_project.training.checkpoint import load_checkpoint
 from fdl_project.training.loop import resolve_device
@@ -46,6 +51,7 @@ class InferenceResult:
     bootstrap: BootstrapResult
     probabilities: pd.DataFrame
     artifact_paths: dict[str, Path]
+    class_weights: np.ndarray | None = None
 
 
 def probability_table(
@@ -77,6 +83,9 @@ def evaluate_checkpoint(
     overwrite: bool = False,
     bootstrap_resamples: int = 1000,
     batch_size: int | None = None,
+    tta: bool = False,
+    tune_thresholds: bool = False,
+    class_weights_path: str | Path | None = None,
 ) -> InferenceResult:
     """Rebuild the model from a checkpoint and score it on one split."""
 
@@ -115,12 +124,39 @@ def evaluate_checkpoint(
         seed=config.seed,
     )
 
-    collected = collect_predictions(
-        model=model, dataloader=dataloader, device=device_object
-    )
+    if tta:
+        collected = collect_predictions_with_tta(
+            model=model, dataloader=dataloader, device=device_object
+        )
+    else:
+        collected = collect_predictions(
+            model=model, dataloader=dataloader, device=device_object
+        )
+
+    # Per-class weights are *fitted* on validation and *reused* on test; fitting
+    # them on test would be selecting on the frozen split.
+    class_weights = None
+    if tune_thresholds and class_weights_path is not None:
+        raise ValueError(
+            "Pass either tune_thresholds (fit new weights) or class_weights_path "
+            "(reuse fitted ones), not both."
+        )
+    if tune_thresholds:
+        if split_name != "validation":
+            raise ValueError("Per-class thresholds must be tuned on validation.")
+        class_weights, _ = tune_class_weights(
+            collected.probabilities, collected.true_indices
+        )
+    elif class_weights_path is not None:
+        class_weights = load_class_weights(class_weights_path)
+
+    predicted_indices = collected.predicted_indices
+    if class_weights is not None:
+        predicted_indices = apply_class_weights(collected.probabilities, class_weights)
+
     evaluation = evaluate_predictions(
         true_indices=collected.true_indices,
-        predicted_indices=collected.predicted_indices,
+        predicted_indices=predicted_indices,
         row_indices=collected.row_indices,
         probabilities=collected.probabilities,
         mean_loss=collected.mean_loss,
@@ -143,6 +179,10 @@ def evaluate_checkpoint(
         "checkpoint_epoch": payload.get("epoch"),
         "split_name": split_name,
         "device": str(device_object),
+        "tta": tta,
+        "class_weights": (
+            None if class_weights is None else [float(w) for w in class_weights]
+        ),
     }
     artifact_paths = save_evaluation_results(
         evaluation,
@@ -155,6 +195,10 @@ def evaluate_checkpoint(
     probability_path = artifact_paths["metrics"].parent / "probabilities.csv"
     probabilities.to_csv(probability_path, index=False)
     artifact_paths["probabilities"] = probability_path
+    if class_weights is not None:
+        artifact_paths["class_weights"] = save_class_weights(
+            class_weights, artifact_paths["metrics"].parent / "class_weights.json"
+        )
 
     return InferenceResult(
         config=config,
@@ -163,4 +207,5 @@ def evaluate_checkpoint(
         bootstrap=bootstrap,
         probabilities=probabilities,
         artifact_paths=artifact_paths,
+        class_weights=class_weights,
     )

@@ -43,6 +43,22 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--batch-size", type=int, default=None)
     parser.add_argument("--overwrite", action="store_true")
     parser.add_argument("--bootstrap-resamples", type=int, default=1000)
+    parser.add_argument(
+        "--tta",
+        action="store_true",
+        help="Average predictions over the 8 square symmetries (8x inference).",
+    )
+    parser.add_argument(
+        "--tune-thresholds",
+        action="store_true",
+        help="Fit per-class decision weights on validation to maximise macro-F1.",
+    )
+    parser.add_argument(
+        "--class-weights",
+        type=Path,
+        default=None,
+        help="Reuse weights fitted earlier (class_weights.json from a validation run).",
+    )
     return parser.parse_args()
 
 
@@ -68,10 +84,19 @@ def main() -> None:
         overwrite=args.overwrite,
         bootstrap_resamples=args.bootstrap_resamples,
         batch_size=args.batch_size,
+        tta=args.tta,
+        tune_thresholds=args.tune_thresholds,
+        class_weights_path=args.class_weights,
     )
 
     aggregate = result.bootstrap.aggregate.set_index("metric")
-    print(f"\n{result.split_name} results for {result.config.name}:")
+    applied = []
+    if args.tta:
+        applied.append("TTA over 8 symmetries")
+    if result.class_weights is not None:
+        applied.append("per-class thresholds")
+    suffix = f" ({', '.join(applied)})" if applied else ""
+    print(f"\n{result.split_name} results for {result.config.name}{suffix}:")
     for metric in ("accuracy", "balanced_accuracy", "macro_f1", "weighted_f1"):
         row = aggregate.loc[metric]
         print(
