@@ -7,11 +7,14 @@ callback, so adding a destination never means editing the loop.
 
 from __future__ import annotations
 
+import logging
 import time
 from typing import Any, Protocol
 
 from fdl_project.config.schema import ExperimentConfig, WandbConfig
 from fdl_project.training.checkpoint import CheckpointManager
+
+logger = logging.getLogger(__name__)
 
 
 class Callback(Protocol):
@@ -38,7 +41,12 @@ class BaseCallback:
 
 
 class ConsoleLogger(BaseCallback):
-    """One readable line per epoch, plus wall-clock timing."""
+    """One readable line per epoch, plus wall-clock timing.
+
+    Goes through ``logging`` rather than ``print`` so a notebook or another
+    caller can silence or redirect it; ``scripts/`` configures a handler that
+    renders it as plain lines.
+    """
 
     def __init__(
         self, *, monitor: str = "validation_macro_f1", run_name: str = "run"
@@ -49,16 +57,18 @@ class ConsoleLogger(BaseCallback):
 
     def on_train_start(self, context: dict[str, Any]) -> None:
         self._started = time.monotonic()
-        print(
-            f"Training {self.run_name} on {context.get('device')} "
-            f"for up to {context.get('max_epochs')} epochs."
+        logger.info(
+            "Training %s on %s for up to %s epochs.",
+            self.run_name,
+            context.get("device"),
+            context.get("max_epochs"),
         )
 
     def on_epoch_end(self, metrics: dict[str, Any], context: dict[str, Any]) -> None:
         marker = " *" if context.get("is_best") else ""
         learning_rate = context.get("learning_rate")
         rate = f" lr {learning_rate:.2e}" if learning_rate is not None else ""
-        print(
+        logger.info(
             f"epoch {metrics['epoch']:>3}"
             f"  train_loss {metrics.get('train_loss', float('nan')):.4f}"
             f"  val_loss {metrics.get('validation_loss', float('nan')):.4f}"
@@ -69,7 +79,7 @@ class ConsoleLogger(BaseCallback):
 
     def on_train_end(self, context: dict[str, Any]) -> None:
         elapsed = time.monotonic() - self._started
-        print(
+        logger.info(
             f"Finished at epoch {context.get('last_epoch')} "
             f"(best epoch {context.get('best_epoch')}, "
             f"{self.monitor} {context.get('best_metric')}) in {elapsed / 60:.1f} min."
