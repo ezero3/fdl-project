@@ -487,11 +487,19 @@ def test_rotation_imports_nothing_at_call_time() -> None:
     import hook with ForkedError and kills the run -- so torchvision must be
     imported at module scope, not lazily in __call__."""
 
+    import ast
     import inspect
+    import textwrap
 
     from fdl_project.data import augmentation
 
-    source = inspect.getsource(augmentation.RotationAugmentation.__call__)
+    tree = ast.parse(
+        textwrap.dedent(inspect.getsource(augmentation.RotationAugmentation.__call__))
+    )
+    imports = [
+        node for node in ast.walk(tree)
+        if isinstance(node, (ast.Import, ast.ImportFrom))
+    ]
 
-    assert "import" not in source
+    assert imports == []
     assert hasattr(augmentation, "InterpolationMode")
