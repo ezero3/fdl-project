@@ -114,12 +114,15 @@ trainer:
   early_stopping:
     monitor: validation_macro_f1
     mode: max
-    # 7, chosen by replaying the phase-2 histories at 5/7/10. Patience 5
-    # would have stopped the best arm (free-angle rotation) at epoch 17 with
-    # 0.8544 and missed the 0.8800 it reached at epoch 36 -- that arm climbs
-    # slowly, with improvement gaps longer than 5 epochs. Patience 7 finds
-    # every result 10 does while stopping ~20% earlier.
-    patience: 7
+    # 10. Patience 7 was tried and reverted: it was chosen by replaying one
+    # recorded metric series, where 7 happened to suffice. Runs are not
+    # deterministic, and the rotation arm's shape -- long plateaus followed by
+    # late climbs -- is exactly the case a single replay does not generalise
+    # to. A rerun with patience 7 stopped at epoch 25 while the patience-10
+    # run of the same setup survived the same plateau and reached its best at
+    # epoch 36 (0.8800). Replaying one history is not a substitute for the
+    # variance across runs.
+    patience: 10
     min_epochs: 5
 
 checkpoint:
