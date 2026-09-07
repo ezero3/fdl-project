@@ -185,7 +185,9 @@ def collect_predictions(
                     f"Targets must contain class indices in [0, {len(names) - 1}]."
                 )
 
-            logits = _extract_logits(model(inputs.to(device_object)))
+            logits = _extract_logits(
+                model(inputs.to(device_object, non_blocking=True))
+            )
             if logits.ndim != 2 or tuple(logits.shape) != (batch_size, len(names)):
                 raise ValueError(
                     "Model logits must have shape "

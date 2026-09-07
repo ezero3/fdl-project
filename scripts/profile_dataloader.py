@@ -4,12 +4,16 @@
 
 Reports three numbers per setting:
 
-* **loader only** -- iterate batches, touch nothing else. This is the floor.
+* **loader only** -- iterate batches, touch nothing else. This is the floor
+  the training loop cannot beat.
 * **full epoch**  -- the real training step on top.
-* **implied GPU** -- the difference. If it is small, the GPU is idle waiting.
+* **ratio**       -- loader / full.
 
-If "loader only" is close to "full epoch", more GPU buys nothing and the fix
-is upstream: fewer per-item CPU operations, or more workers.
+The difference between them is **not** "GPU time": in a real epoch the loader
+and the GPU overlap, so subtracting one from the other decomposes nothing.
+Read the ratio instead. Near 1.0 means the loop is spending essentially all
+its time waiting for data, and no GPU change will help; well under 1.0 means
+loading is already hidden behind compute.
 """
 
 from __future__ import annotations
@@ -73,7 +77,7 @@ def time_setting(config_path, overrides, dataframe) -> dict:
     full = time.monotonic() - started
 
     return {"loader_only": loader_only, "full": full,
-            "implied_gpu": full - loader_only, "items": items}
+            "ratio": loader_only / full, "items": items}
 
 
 def main() -> None:
@@ -100,14 +104,13 @@ def main() -> None:
                   [f"data.num_workers={n}", "data.augmentation.name=rotation"])
                  for n in counts]
 
-    print(f"{'setting':24} {'loader':>9} {'full':>9} {'implied GPU':>12} {'loader %':>9}")
+    print(f"{'setting':24} {'loader':>9} {'full':>9} {'ratio':>8} {'items/s':>10}")
     for label, overrides in settings:
         result = time_setting(args.config, overrides, dataframe)
-        share = result["loader_only"] / result["full"] * 100
         print(f"{label:24} {result['loader_only']:8.1f}s {result['full']:8.1f}s "
-              f"{result['implied_gpu']:11.1f}s {share:8.0f}%")
+              f"{result['ratio']:8.2f} {result['items'] / result['full']:10.0f}")
 
-    print("\nA high 'loader %' means the GPU is waiting. Fixes, in order of size:")
+    print("\nA ratio near 1.0 means the loop is waiting on data. Fixes, by size:")
     print("  1. move the one-hot encoding to the GPU (~50% of per-item CPU cost,")
     print("     and 12x less data over PCIe: uint8 categorical vs float32 3-channel)")
     print("  2. cache the letterboxed uint8 map (~40% more; 496 MB at 64x64)")

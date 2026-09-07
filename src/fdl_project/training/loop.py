@@ -119,8 +119,11 @@ def train_one_epoch(
 
     for batch in dataloader:
         inputs, targets = _unpack_training_batch(batch)
-        inputs = inputs.to(device_object)
-        targets = targets.to(device_object, dtype=torch.long)
+        # pin_memory is on, so a non-blocking copy lets the transfer overlap
+        # the previous batch's compute. CUDA ordering makes the following
+        # forward wait for it, so no explicit synchronise is needed.
+        inputs = inputs.to(device_object, non_blocking=True)
+        targets = targets.to(device_object, dtype=torch.long, non_blocking=True)
         if targets.ndim != 1 or len(targets) != len(inputs):
             raise ValueError("Training targets must contain one label per input.")
 
