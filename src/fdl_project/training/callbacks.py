@@ -150,6 +150,7 @@ class WandbLogger(BaseCallback):
         run_name: str,
         resolved_config: dict[str, Any] | None = None,
         resume_id: str | None = None,
+        finish_on_train_end: bool = True,
     ) -> None:
         try:
             import wandb
@@ -173,6 +174,8 @@ class WandbLogger(BaseCallback):
             resume="allow" if resume_id else None,
         )
 
+        self.finish_on_train_end = finish_on_train_end
+
     @property
     def run_id(self) -> str | None:
         return None if self.run is None else self.run.id
@@ -186,11 +189,29 @@ class WandbLogger(BaseCallback):
         self._wandb.log(payload, step=int(metrics["epoch"]))
 
     def on_train_end(self, context: dict[str, Any]) -> None:
-        if self.run is not None:
-            self.run.summary["best_epoch"] = context.get("best_epoch")
-            self.run.summary["best_metric"] = context.get("best_metric")
-            self.run.summary["stopped_early"] = context.get("stopped_early")
+        if self.run is None:
+            return
+        self.run.summary["best_epoch"] = context.get("best_epoch")
+        self.run.summary["best_metric"] = context.get("best_metric")
+        self.run.summary["stopped_early"] = context.get("stopped_early")
+        # A caller that computes more after training -- the runner does the
+        # bootstrap intervals -- keeps the run open and calls finalize().
+        if self.finish_on_train_end:
             self.run.finish()
+
+    def finalize(self, summary: dict[str, Any] | None = None) -> None:
+        """Attach post-training values and close the run.
+
+        The confidence intervals are the reason this exists. They are computed
+        after ``fit_model`` returns, so without this they lived only in local
+        artifacts -- and a Colab VM taking those with it is exactly how a
+        night's results get lost.
+        """
+
+        if self.run is None:
+            return
+        self.run.summary.update(summary or {})
+        self.run.finish()
 
 
 def build_callbacks(
@@ -198,6 +219,7 @@ def build_callbacks(
     *,
     checkpoint_manager: CheckpointManager | None = None,
     console: bool = True,
+    finish_wandb: bool = True,
 ) -> list[Callback]:
     """Assemble the callbacks an experiment config asks for."""
 
@@ -218,6 +240,7 @@ def build_callbacks(
                 config.logging.wandb,
                 run_name=config.name,
                 resolved_config=config.to_dict(),
+                finish_on_train_end=finish_wandb,
             )
         )
     return callbacks

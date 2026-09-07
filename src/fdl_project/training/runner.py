@@ -244,7 +244,11 @@ def run_experiment(
                 resume_state.best_epoch,
             )
 
-    callbacks = build_callbacks(config, checkpoint_manager=manager)
+    # The run stays open past fit_model so the bootstrap intervals, which
+    # are computed below, reach W&B rather than only local disk.
+    callbacks = build_callbacks(
+        config, checkpoint_manager=manager, finish_wandb=False
+    )
     fit = fit_model(
         model,
         train_loader,
@@ -288,6 +292,18 @@ def run_experiment(
     bootstrap = bootstrap_evaluation(
         validation, num_resamples=bootstrap_resamples, seed=config.seed
     )
+    aggregate = bootstrap.aggregate.set_index("metric")
+    for callback in callbacks:
+        finalize = getattr(callback, "finalize", None)
+        if finalize is not None:
+            finalize({
+                f"{metric}_{bound}": float(aggregate.loc[metric, column])
+                for metric in aggregate.index
+                for bound, column in (("ci_lower", "ci_lower"),
+                                      ("ci_upper", "ci_upper"),
+                                      ("point", "point_estimate"))
+            })
+
     metadata = {
         "config": config.to_dict(),
         "best_epoch": fit.best_epoch,
