@@ -3,6 +3,7 @@
 from fdl_project.data.augmentation import (
     NUM_DIHEDRAL_TRANSFORMS,
     TRANSFORM_SUBSETS,
+    ComposedAugmentation,
     DihedralAugmentation,
     apply_dihedral,
     available_augmentations,
@@ -46,6 +47,7 @@ __all__ = [
     "TRANSFORM_SUBSETS",
     "DihedralAugmentation",
     "apply_dihedral",
+    "ComposedAugmentation",
     "available_augmentations",
     "build_augmentation",
     "dihedral_views",

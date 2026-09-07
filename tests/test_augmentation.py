@@ -9,6 +9,7 @@ from torch import nn
 
 from fdl_project.data.augmentation import (
     NUM_DIHEDRAL_TRANSFORMS,
+    ComposedAugmentation,
     TRANSFORM_SUBSETS,
     RotationAugmentation,
     DihedralAugmentation,
@@ -142,6 +143,7 @@ def test_the_registry_reports_and_validates_names() -> None:
         "rotations",
         "flips",
         "rotation",
+        "dihedral8_rotation",
     }
     # off unless a config asks for it
     assert build_augmentation(None) is None
@@ -405,3 +407,76 @@ def test_residual_block_projects_when_shapes_differ() -> None:
     assert isinstance(same.skip, nn.Identity)
     assert not isinstance(projected.skip, nn.Identity)
     assert projected(torch.rand(2, 16, 8, 8)).shape == (2, 32, 4, 4)
+
+
+# -- composition -----------------------------------------------------------
+
+
+def test_dihedral_and_rotation_compose_into_two_stages() -> None:
+    """The group alone reaches 8 views; composing a free angle onto it makes
+    the reachable set continuous, which is the point of the arm."""
+
+    composed = build_augmentation("dihedral8_rotation")
+
+    assert len(composed.stages) == 2
+    assert isinstance(composed.stages[0], DihedralAugmentation)
+    assert isinstance(composed.stages[1], RotationAugmentation)
+
+
+def test_composition_preserves_the_one_hot_encoding() -> None:
+    wafer = _wafer()
+    composed = build_augmentation("dihedral8_rotation", degrees=180.0)
+
+    augmented = composed(wafer)
+
+    assert augmented.shape == wafer.shape
+    assert torch.all(augmented.sum(dim=0) == 1)
+
+
+def test_composition_refuses_per_class_probabilities() -> None:
+    """Inherited from the rotation stage: resampling unevenly leaks the label."""
+
+    with pytest.raises(ValueError, match="leaks the label"):
+        build_augmentation("dihedral8_rotation", class_probabilities={"Scratch": 1.0})
+
+
+def test_composition_is_reachable_from_the_registry() -> None:
+    assert "dihedral8_rotation" in available_augmentations()
+
+
+def test_an_empty_composition_is_rejected() -> None:
+    with pytest.raises(ValueError, match="at least one stage"):
+        ComposedAugmentation(stages=())
+
+
+def test_the_rotation_stage_applies_less_often_than_the_group() -> None:
+    """The group transform is exact and free, so it always applies; the
+    rotation resamples, so clean examples are kept in the distribution."""
+
+    composed = build_augmentation("dihedral8_rotation", rotation_probability=0.5)
+
+    assert composed.stages[0].probability == 1.0
+    assert composed.stages[1].probability == 0.5
+
+
+def test_rotation_fill_follows_the_encoding() -> None:
+    """A one-hot fill in a grayscale tensor would decode to a nonexistent state."""
+
+    from fdl_project.data.preprocessing import PreprocessingConfig, background_fill
+
+    one_hot = background_fill(PreprocessingConfig())
+    grayscale = background_fill(PreprocessingConfig(encoding="grayscale_rgb"))
+    normalized = background_fill(
+        PreprocessingConfig(encoding="grayscale_rgb", normalization="imagenet")
+    )
+
+    assert one_hot == [1.0, 0.0, 0.0]
+    assert grayscale == [0.0, 0.0, 0.0]
+    assert all(value < 0 for value in normalized)  # 0.0 pushed through the norm
+
+
+def test_rotation_rejects_a_fill_of_the_wrong_width() -> None:
+    augmentation = RotationAugmentation(fill=(1.0, 0.0))
+
+    with pytest.raises(ValueError, match="channels"):
+        augmentation(_wafer())
