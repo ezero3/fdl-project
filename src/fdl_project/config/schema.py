@@ -348,6 +348,13 @@ class TrainerConfig:
     batch_size: int = 512
     max_gradient_norm: float = 5.0
     amp: bool = True
+    # NHWC weights and activations. cuDNN's fastest convolution kernels on
+    # tensor-core GPUs want that layout, and dilated depthwise convolutions --
+    # the slowest thing in this project, measured at 1.47x the undilated cost
+    # on a T4 -- are exactly where the NCHW path is worst. Mathematically a
+    # no-op: it changes the memory layout, not the arithmetic. Off by default
+    # because it is only ever a speed choice, and it does nothing on CPU.
+    channels_last: bool = False
     device: DeviceName = "auto"
     early_stopping: EarlyStoppingConfig = EarlyStoppingConfig()
 
@@ -362,6 +369,8 @@ class TrainerConfig:
             raise ValueError("trainer.max_gradient_norm must be a positive number.")
         if not isinstance(self.amp, bool):
             raise ValueError("trainer.amp must be a boolean.")
+        if not isinstance(self.channels_last, bool):
+            raise ValueError("trainer.channels_last must be a boolean.")
         if self.device not in {"auto", "cpu", "cuda", "mps"}:
             raise ValueError("trainer.device must be auto, cpu, cuda, or mps.")
         if not isinstance(self.early_stopping, EarlyStoppingConfig):

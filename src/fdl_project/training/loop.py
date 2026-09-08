@@ -104,6 +104,7 @@ def train_one_epoch(
     scheduler: Any = None,
     scheduler_interval: str = "epoch",
     batch_transform: Any = None,
+    channels_last: bool = False,
 ) -> dict[str, float | int]:
     """Train one complete epoch and report sample-weighted diagnostics."""
 
@@ -128,6 +129,10 @@ def train_one_epoch(
         if batch_transform is not None:
             # Categorical uint8 arrived; augment and encode on the device.
             inputs = batch_transform(inputs, training=True)
+        if channels_last:
+            # The weights are already NHWC. Converting here means cuDNN does not
+            # re-derive the layout on every batch; the values are untouched.
+            inputs = inputs.contiguous(memory_format=torch.channels_last)
         if targets.ndim != 1 or len(targets) != len(inputs):
             raise ValueError("Training targets must contain one label per input.")
 
@@ -249,6 +254,7 @@ def fit_model(
             scheduler=scheduler,
             scheduler_interval=scheduler_interval,
             batch_transform=batch_transform,
+            channels_last=config.channels_last,
         )
         validation = evaluate_model(
             model,

@@ -227,6 +227,11 @@ def run_experiment(
     criterion = build_training_loss(config.imbalance, class_counts)
 
     model = build_model(config.model.name, **dict(config.model.kwargs))
+    if config.trainer.channels_last:
+        # Applied here, before the optimizer is built and before any checkpoint
+        # is loaded, so every later copy of the weights carries the layout.
+        model = model.to(memory_format=torch.channels_last)
+        logger.info("Model converted to channels_last (NHWC) memory format.")
     optimizer = build_optimizer(model, config.optimizer)
     scheduler = build_learning_rate_scheduler(
         optimizer,
