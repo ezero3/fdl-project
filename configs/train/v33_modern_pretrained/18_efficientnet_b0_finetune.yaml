@@ -1,0 +1,49 @@
+# The efficiency question: 5.3M parameters, a fifth of ResNet34's, and the only
+# pretrained backbone here smaller than our own resnet_style is large.
+#
+# If this matches the 21-24M ResNets, the pretrained half of the story is not
+# about size either -- which would match what we already measured on the
+# from-scratch side, where 414k tied 2.83M.
+name: v33-efficientnet_b0_finetune
+
+model:
+  name: frozen_backbone_mlp
+  kwargs:
+    architecture: efficientnet_b0
+    hidden_features: 256
+    dropout: 0.3
+    freeze_encoder: false
+
+data:
+  preprocessing:
+    target_size: [128, 128]
+  augmentation:
+    name: rotation
+    probability: 0.5
+    kwargs: {degrees: 180.0}
+
+optimizer:
+  name: adamw
+  kwargs:
+    lr: 7.0e-4              # the head
+    weight_decay: 1.0e-4
+  param_groups:
+    - name: encoder
+      pattern: "^encoder\\."
+      kwargs:
+        lr: 1.0e-5          # the winning rung from v30
+
+# One scheduler, two base rates: each group anneals from its own, and
+# min_lr_ratio is a ratio, so the 70x separation holds for the whole run.
+scheduler:
+  name: cosine_with_warmup
+  interval: epoch
+  kwargs:
+    warmup_epochs: 3
+    min_lr_ratio: 0.01
+
+imbalance:
+  preset: inverse_sqrt_sampler
+
+trainer:
+  max_epochs: 60

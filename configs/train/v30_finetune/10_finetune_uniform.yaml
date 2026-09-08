@@ -1,0 +1,49 @@
+# No discrimination: the pretrained encoder trains at the head's learning rate.
+# This is ImageNet as an initialisation and nothing more, and it is the top rung
+# of the ladder -- if it matches 08/09, the pretrained weights were worth only
+# their starting point.
+name: v30-finetune_uniform
+
+model:
+  name: frozen_backbone_mlp
+  kwargs:
+    architecture: resnet18
+    hidden_features: 256
+    dropout: 0.3
+    freeze_encoder: false
+
+data:
+  preprocessing:
+    target_size: [128, 128]
+  augmentation:
+    name: rotation
+    probability: 0.5
+    kwargs: {degrees: 180.0}
+
+imbalance:
+  preset: inverse_sqrt_sampler
+
+optimizer:
+  name: adamw
+  kwargs:
+    lr: 7.0e-4
+    weight_decay: 1.0e-4
+  # No param_groups: every parameter lands in the default group.
+
+# One scheduler, two base learning rates. A PyTorch scheduler scales every
+# param group from its OWN base lr, and min_lr_ratio is a ratio rather than an
+# absolute floor -- so the separation between encoder and head is preserved for
+# the whole run. Two schedulers are neither possible nor needed.
+scheduler:
+  name: cosine_with_warmup
+  interval: epoch
+  kwargs:
+    # Warmup matters most here: a large gradient from the randomly initialised
+    # head can wreck pretrained features in the first few hundred steps, which
+    # is the classic way a fine-tuning run fails for reasons unrelated to
+    # transfer.
+    warmup_epochs: 3
+    min_lr_ratio: 0.01
+
+trainer:
+  max_epochs: 40

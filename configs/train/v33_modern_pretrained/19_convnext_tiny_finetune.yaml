@@ -1,0 +1,48 @@
+# The direct pairing with our own work: convnext_style from scratch scored
+# 0.8883 with 414k parameters. This is the same design, pretrained on ImageNet
+# at 28.6M -- 69x the parameters and a year of GPU time behind it.
+#
+# The cleanest slide in the project if it does not win.
+name: v33-convnext_tiny_finetune
+
+model:
+  name: frozen_backbone_mlp
+  kwargs:
+    architecture: convnext_tiny
+    hidden_features: 256
+    dropout: 0.3
+    freeze_encoder: false
+
+data:
+  preprocessing:
+    target_size: [128, 128]
+  augmentation:
+    name: rotation
+    probability: 0.5
+    kwargs: {degrees: 180.0}
+
+optimizer:
+  name: adamw
+  kwargs:
+    lr: 7.0e-4              # the head
+    weight_decay: 1.0e-4
+  param_groups:
+    - name: encoder
+      pattern: "^encoder\\."
+      kwargs:
+        lr: 1.0e-5          # the winning rung from v30
+
+# One scheduler, two base rates: each group anneals from its own, and
+# min_lr_ratio is a ratio, so the 70x separation holds for the whole run.
+scheduler:
+  name: cosine_with_warmup
+  interval: epoch
+  kwargs:
+    warmup_epochs: 3
+    min_lr_ratio: 0.01
+
+imbalance:
+  preset: inverse_sqrt_sampler
+
+trainer:
+  max_epochs: 60

@@ -1,0 +1,43 @@
+# Our from-scratch ViT at 128x128, sized to 2.83M -- the same capacity as
+# resnet_style, so the comparison is attention vs convolution at matched size.
+#
+# patch 16 over a 128 map gives 64 tokens, the same sequence length vit_style
+# gets from patch 8 at 64x64; the tokens just carry 4x the pixels each.
+name: v28-vit_style_128
+
+model:
+  name: vit_style
+  kwargs:
+    image_size: 128
+    patch_size: 16
+    embedding_dimension: 192
+    depth: 6
+    heads: 3
+    dropout: 0.1
+
+data:
+  preprocessing:
+    target_size: [128, 128]
+  augmentation:
+    name: rotation
+    probability: 0.5
+    kwargs: {degrees: 180.0}
+
+imbalance:
+  preset: inverse_sqrt_sampler
+
+# The one deliberate deviation from the settled pipeline in this series.
+# A from-scratch ViT with no warmup on a constant learning rate is a known
+# failure mode -- the attention maps collapse in the first few hundred steps.
+# Every CNN arm here runs at constant lr, so this arm alone is not directly
+# comparable on schedule; that is a smaller distortion than reporting a ViT
+# that failed for a reason unrelated to attention.
+scheduler:
+  name: cosine_with_warmup
+  interval: epoch
+  kwargs:
+    warmup_epochs: 5
+    min_lr_ratio: 0.01
+
+trainer:
+  max_epochs: 100

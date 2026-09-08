@@ -1,0 +1,24 @@
+# ConvNeXt-style: transformer design choices on a convolutional operator --
+# 7x7 depthwise kernels, LayerNorm, inverted bottleneck, GELU, LayerScale.
+# 414k parameters.
+#
+# stem_stride 2, not the reference 4: stride-4 patchify would discard 94% of
+# a 64x64 map before the first block.
+name: v27-convnext_style
+
+model:
+  name: convnext_style
+  kwargs:
+    widths: [32, 64, 128]
+    blocks_per_stage: [2, 2, 2]
+    stem_stride: 2
+    stochastic_depth: 0.05
+
+data:
+  augmentation:
+    name: rotation
+    probability: 0.5
+    kwargs: {degrees: 180.0}
+
+imbalance:
+  preset: inverse_sqrt_sampler

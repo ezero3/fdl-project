@@ -1,0 +1,27 @@
+# The same frozen backbone, fed the way an ImageNet model expects: one grey
+# channel repeated to RGB and standardised with ImageNet mean/std.
+#
+# Loses the categorical distinction -- "defective" becomes merely twice
+# "functional" on one axis -- but places the input in the distribution the
+# weights were fitted on. 05 vs 06 is the whole question.
+name: v29-resnet18_frozen_grayscale
+
+model:
+  name: frozen_backbone_mlp
+  kwargs: {architecture: resnet18, hidden_features: 256, dropout: 0.3}
+
+data:
+  preprocessing:
+    target_size: [128, 128]
+    encoding: grayscale_rgb
+    normalization: imagenet
+  augmentation:
+    name: rotation
+    probability: 0.5
+    kwargs: {degrees: 180.0}
+
+imbalance:
+  preset: inverse_sqrt_sampler
+
+trainer:
+  max_epochs: 60

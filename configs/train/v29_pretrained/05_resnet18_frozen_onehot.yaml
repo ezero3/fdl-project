@@ -1,0 +1,29 @@
+# Frozen ImageNet ResNet18 reading our one-hot channels directly.
+# Keeps every bit of the categorical encoding; asks ImageNet filters to make
+# sense of an input unlike anything they were trained on.
+#
+# one_hot forbids any normalization: ImageNet statistics on indicator channels
+# is arithmetic without meaning, and PreprocessingConfig enforces it.
+name: v29-resnet18_frozen_onehot
+
+model:
+  name: frozen_backbone_mlp
+  kwargs: {architecture: resnet18, hidden_features: 256, dropout: 0.3}
+
+data:
+  preprocessing:
+    # 128, not 64: ResNet18 downsamples by 32, so a 64x64 input leaves a 2x2
+    # feature map -- too little spatial extent for the backbone to say anything.
+    target_size: [128, 128]
+  augmentation:
+    name: rotation
+    probability: 0.5
+    kwargs: {degrees: 180.0}
+
+imbalance:
+  preset: inverse_sqrt_sampler
+
+trainer:
+  # Only the head trains, so this converges in a fraction of the epochs a
+  # from-scratch model needs. Patience 10 still decides when to stop.
+  max_epochs: 60

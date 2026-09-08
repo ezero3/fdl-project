@@ -1,0 +1,16 @@
+# Parallel kernel sizes in one block: the multi-scale answer to defects that
+# range from a one-die Scratch to a full Edge-Ring. 799k parameters.
+name: v27-inception_style
+
+model:
+  name: inception_style
+  kwargs: {}
+
+data:
+  augmentation:
+    name: rotation
+    probability: 0.5
+    kwargs: {degrees: 180.0}
+
+imbalance:
+  preset: inverse_sqrt_sampler

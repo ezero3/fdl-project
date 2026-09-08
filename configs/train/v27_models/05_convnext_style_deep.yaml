@@ -1,0 +1,25 @@
+# Tier 2: depth only. Widths are unchanged from 01, so the difference between
+# this and 01 is stages, not channels -- and the answer is attributable.
+#
+# [3, 3, 9] is ConvNeXt-T's own stage ratio, scaled to three stages.
+# 1.43M parameters against 414k.
+name: v27-convnext_style_deep
+
+model:
+  name: convnext_style
+  kwargs:
+    widths: [32, 64, 128]
+    blocks_per_stage: [3, 3, 9]
+    stem_stride: 2
+    # Held at 01's value. Deeper ConvNeXts normally raise this, but that would
+    # make the arm differ from 01 in two ways at once.
+    stochastic_depth: 0.05
+
+data:
+  augmentation:
+    name: rotation
+    probability: 0.5
+    kwargs: {degrees: 180.0}
+
+imbalance:
+  preset: inverse_sqrt_sampler

@@ -1,0 +1,18 @@
+# Tier 2: more inception blocks per stage, same branch widths.
+# 2 -> 4 blocks; 1.66M parameters against 799k.
+name: v27-inception_style_deep
+
+model:
+  name: inception_style
+  kwargs:
+    branch_channels: [32, 64, 96]
+    blocks_per_stage: 4
+
+data:
+  augmentation:
+    name: rotation
+    probability: 0.5
+    kwargs: {degrees: 180.0}
+
+imbalance:
+  preset: inverse_sqrt_sampler

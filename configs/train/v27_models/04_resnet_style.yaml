@@ -1,0 +1,20 @@
+# Residual CNN, 2.83M parameters -- 18x the baseline. The capacity question:
+# rotation removed the baseline's overfitting, so does more capacity now pay?
+name: v27-resnet_style
+
+model:
+  name: resnet_style
+  kwargs:
+    widths: [32, 64, 128, 256]
+    blocks_per_stage: 2
+    dropout: 0.4
+    head_dropout: 0.3
+
+data:
+  augmentation:
+    name: rotation
+    probability: 0.5
+    kwargs: {degrees: 180.0}
+
+imbalance:
+  preset: inverse_sqrt_sampler

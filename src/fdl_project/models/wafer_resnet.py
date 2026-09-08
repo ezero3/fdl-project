@@ -29,19 +29,37 @@ from fdl_project.models.attention import build_attention
 class ResidualBlock(nn.Module):
     """Two 3x3 convolutions plus a skip connection."""
 
-    def __init__(self, in_channels: int, out_channels: int, stride: int = 1) -> None:
+    def __init__(
+        self,
+        in_channels: int,
+        out_channels: int,
+        stride: int = 1,
+        dilation: int = 1,
+    ) -> None:
         super().__init__()
+        if dilation < 1:
+            raise ValueError("dilation must be at least 1.")
+        # padding = dilation for a 3x3 kernel keeps the output shape identical
+        # at any rate, including alongside a stride, so dilation changes the
+        # receptive field and nothing else. The 1x1 skip is left undilated --
+        # a 1x1 kernel has no spatial extent for a rate to act on.
         self.convolution1 = nn.Conv2d(
             in_channels,
             out_channels,
             kernel_size=3,
             stride=stride,
-            padding=1,
+            padding=dilation,
+            dilation=dilation,
             bias=False,
         )
         self.normalization1 = nn.BatchNorm2d(out_channels)
         self.convolution2 = nn.Conv2d(
-            out_channels, out_channels, kernel_size=3, padding=1, bias=False
+            out_channels,
+            out_channels,
+            kernel_size=3,
+            padding=dilation,
+            dilation=dilation,
+            bias=False,
         )
         self.normalization2 = nn.BatchNorm2d(out_channels)
         # A projection is needed only when the skip cannot line up with the
@@ -65,9 +83,14 @@ class ResidualBlock(nn.Module):
         return self.activation(residual + identity)
 
 
-def _stage(in_channels: int, out_channels: int, *, stride: int, blocks: int) -> nn.Sequential:
-    layers = [ResidualBlock(in_channels, out_channels, stride=stride)]
-    layers += [ResidualBlock(out_channels, out_channels) for _ in range(blocks - 1)]
+def _stage(
+    in_channels: int, out_channels: int, *, stride: int, blocks: int, dilation: int = 1
+) -> nn.Sequential:
+    layers = [ResidualBlock(in_channels, out_channels, stride=stride, dilation=dilation)]
+    layers += [
+        ResidualBlock(out_channels, out_channels, dilation=dilation)
+        for _ in range(blocks - 1)
+    ]
     return nn.Sequential(*layers)
 
 
@@ -83,6 +106,7 @@ class WaferResNet(nn.Module):
         *,
         widths: tuple[int, ...] = (32, 64, 128, 256),
         blocks_per_stage: int = 2,
+        dilation: int | tuple[int, ...] = 1,
         dropout: float = 0.4,
         head_dropout: float = 0.3,
         hidden_features: int = 128,
@@ -98,6 +122,20 @@ class WaferResNet(nn.Module):
                 raise ValueError(f"{name} must be in [0, 1).")
         if hidden_features < 1:
             raise ValueError("hidden_features must be positive.")
+
+        # One rate per stage. Dilating the late stages is the useful case: by
+        # then the map has been downsampled and context is what is missing,
+        # while the early stages still hold the resolution a thin Scratch needs.
+        rates_per_stage = (
+            (dilation,) * len(widths) if isinstance(dilation, int) else tuple(dilation)
+        )
+        if len(rates_per_stage) != len(widths):
+            raise ValueError(
+                "dilation must be an int or one rate per stage; got "
+                f"{len(rates_per_stage)} rates for {len(widths)} stages."
+            )
+        if any(rate < 1 for rate in rates_per_stage):
+            raise ValueError("dilation rates must be positive.")
 
         # 3x3 stride-1, no max-pool: at 64x64 a torchvision-style 7x7 stride-2
         # stem plus pooling would drop to 16x16 before the first block, which
@@ -119,10 +157,12 @@ class WaferResNet(nn.Module):
                     width,
                     stride=1 if position == 0 else 2,
                     blocks=blocks_per_stage,
+                    dilation=rates_per_stage[position],
                 )
             )
             in_channels = width
 
+        self.dilation_rates = rates_per_stage
         self.encoder = nn.Sequential(*stages)
         self.attention = build_attention(attention, in_channels) or nn.Identity()
         self.pool = nn.Sequential(nn.AdaptiveAvgPool2d(1), nn.Flatten())

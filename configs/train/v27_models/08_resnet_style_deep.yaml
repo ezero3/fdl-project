@@ -1,0 +1,24 @@
+# Tier 2: more residual blocks per stage, same widths.
+# 2 -> 4 blocks; 5.97M parameters against 2.83M -- 38x the baseline CNN.
+#
+# The heaviest arm, and last on purpose. If 04 already ties the 157k baseline,
+# this one is answering a question that is already closed; skip it and spend
+# the hour on seeds instead.
+name: v27-resnet_style_deep
+
+model:
+  name: resnet_style
+  kwargs:
+    widths: [32, 64, 128, 256]
+    blocks_per_stage: 4
+    dropout: 0.4
+    head_dropout: 0.3
+
+data:
+  augmentation:
+    name: rotation
+    probability: 0.5
+    kwargs: {degrees: 180.0}
+
+imbalance:
+  preset: inverse_sqrt_sampler

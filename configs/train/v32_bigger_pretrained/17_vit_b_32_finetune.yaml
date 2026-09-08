@@ -1,0 +1,58 @@
+# A pretrained transformer, fine-tuned on the same recipe. 87.7M parameters.
+#
+# vit_b_32 rather than vit_b_16: 32x32 patches give 49 tokens instead of 196,
+# which measured 458 s/epoch against 1482 for b_16 on a T4. It is the small ViT
+# in every sense that costs time.
+#
+# 224x224 is not a choice. Torchvision ViT checkpoints carry positional
+# embeddings fitted to exactly that size and raise on anything else, so this arm
+# cannot share the 128px geometry of 15 and 16. Two consequences worth stating
+# in the presentation rather than hiding: the input is a further upsample of a
+# 212x187 map, and 224^2 exceeds the 2 GiB geometry-cache budget, so the loader
+# falls back to redoing letterboxing per access.
+name: v32-vit_b_32_finetune
+
+model:
+  name: frozen_backbone_mlp
+  kwargs:
+    architecture: vit_b_32
+    hidden_features: 256
+    dropout: 0.3
+    freeze_encoder: false
+
+data:
+  preprocessing:
+    target_size: [224, 224]
+  augmentation:
+    name: rotation
+    probability: 0.5
+    kwargs: {degrees: 180.0}
+
+optimizer:
+  name: adamw
+  kwargs:
+    lr: 7.0e-4              # the head
+    weight_decay: 1.0e-4
+  param_groups:
+    - name: encoder
+      pattern: "^encoder\\."
+      kwargs:
+        lr: 1.0e-5          # the winning rung from v30
+
+# One scheduler, two base rates: each group anneals from its own, and
+# min_lr_ratio is a ratio, so the 70x separation holds for the whole run.
+scheduler:
+  name: cosine_with_warmup
+  interval: epoch
+  kwargs:
+    warmup_epochs: 3
+    min_lr_ratio: 0.01
+
+imbalance:
+  preset: inverse_sqrt_sampler
+
+trainer:
+  # 60, not 40: v30-finetune_encoder_1e-5 found its best at epoch 31 of 40 with
+  # patience 10, so early stopping never fired and its 0.8938 is a floor. These
+  # backbones are larger and will not converge sooner.
+  max_epochs: 60
