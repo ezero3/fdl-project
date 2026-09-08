@@ -1,0 +1,24 @@
+# A second frozen backbone on the same encoding, to separate "pretrained
+# features help" from "ResNet18's features help".
+# mobilenet_v3_small is 10x smaller than ResNet18 and emits 576 features.
+name: v29-mobilenet_frozen_grayscale
+
+model:
+  name: frozen_backbone_mlp
+  kwargs: {architecture: mobilenet_v3_small, hidden_features: 256, dropout: 0.3}
+
+data:
+  preprocessing:
+    target_size: [128, 128]
+    encoding: grayscale_rgb
+    normalization: imagenet
+  augmentation:
+    name: rotation
+    probability: 0.5
+    kwargs: {degrees: 180.0}
+
+imbalance:
+  preset: inverse_sqrt_sampler
+
+trainer:
+  max_epochs: 60

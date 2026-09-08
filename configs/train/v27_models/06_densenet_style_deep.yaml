@@ -1,0 +1,19 @@
+# Tier 2: more layers per dense block, same growth rate and stem.
+# (4, 6, 8) -> (6, 12, 16); 775k parameters against 304k.
+name: v27-densenet_style_deep
+
+model:
+  name: densenet_style
+  kwargs:
+    growth_rate: 16
+    block_layers: [6, 12, 16]
+    initial_channels: 32
+
+data:
+  augmentation:
+    name: rotation
+    probability: 0.5
+    kwargs: {degrees: 180.0}
+
+imbalance:
+  preset: inverse_sqrt_sampler

@@ -31,12 +31,35 @@ The noise floor is **0.010**, measured: the identical config scored 0.8800 and 0
 An architecture beats the baseline only if its bootstrap CI lower bound sits above the
 baseline's point estimate. Anything closer is a tie, and the tie-breaker is cost.
 
+### Tier 1 — architecture
+
 | arm | params | notes |
 |---|---|---|
 | `00_baseline_cnn` | 157k | reference; ~13s/epoch on a T4 |
 | `01_convnext_style` | 414k | |
 | `02_densenet_style` | 304k | ~164s/epoch measured, 3.94 GiB |
 | `03_inception_style` | 799k | |
-| `04_resnet_style` | 2.83M | heaviest |
+| `04_resnet_style` | 2.83M | |
 
-Ordered cheapest-first so an interrupted session keeps the most arms.
+### Tier 2 — depth, at fixed width
+
+> **Superseded by `configs/train/v28_capacity/`.** These were written before v27 had
+> results. v28 asks the same capacity question better: it scales ConvNeXt to 2.68M so it
+> *matches* `resnet_style`'s 2.83M, which is what makes architecture and capacity separable.
+> Run v28 instead; these are kept only for the record.
+
+Every width, growth rate and branch size is held at its tier-1 value, so `05` minus
+`01` is stages and nothing else. Regularization is held too (convnext keeps
+`stochastic_depth: 0.05` rather than the higher value a deeper ConvNeXt would normally
+get) — otherwise the arm would differ in two ways at once.
+
+| arm | params | change |
+|---|---|---|
+| `05_convnext_style_deep` | 1.43M | blocks (2,2,2) → (3,3,9), ConvNeXt-T's own ratio |
+| `06_densenet_style_deep` | 775k | block layers (4,6,8) → (6,12,16) |
+| `07_inception_style_deep` | 1.66M | 2 → 4 blocks per stage |
+| `08_resnet_style_deep` | 5.97M | 2 → 4 blocks per stage; 38x the baseline |
+
+Ordered cheapest-first so an interrupted session keeps the most arms, and so tier 1
+completes before tier 2 starts. If no tier-1 arm clears the baseline, tier 2 is answering
+a question that is already closed — skip it and spend the hours on seeds.

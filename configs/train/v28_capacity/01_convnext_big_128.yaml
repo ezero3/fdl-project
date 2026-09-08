@@ -1,0 +1,34 @@
+# The same model at 128x128 instead of 64x64.
+#
+# The case for resolution is specific: Scratch is a one-die-wide line and
+# 64x64 is a ~3x downsample from the 212x187 native maximum, which is exactly
+# what destroys a thin line. Scratch is still the weakest class (0.77 on the
+# best v27 arm). Phase 2 did test 224 and got +0.015 (not significant), but on
+# baseline_cnn, which was capacity-limited and underpowered to show it.
+#
+# 128 and not 224: 121,063 x 128^2 = 1.98 GB, just under the 2 GiB geometry
+# cache budget, so the fast cache still holds. Above that the loader falls
+# back to redoing letterboxing per access.
+name: v28-convnext_big_128
+
+model:
+  name: convnext_style
+  kwargs:
+    widths: [64, 128, 256]
+    blocks_per_stage: [2, 2, 4]
+    stem_stride: 2
+    stochastic_depth: 0.1
+
+data:
+  preprocessing:
+    target_size: [128, 128]
+  augmentation:
+    name: rotation
+    probability: 0.5
+    kwargs: {degrees: 180.0}
+
+imbalance:
+  preset: inverse_sqrt_sampler
+
+trainer:
+  max_epochs: 100

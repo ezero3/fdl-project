@@ -22,6 +22,7 @@ dev = [
     "ipykernel>=6.29,<7",
     "nbconvert>=7.16,<8",
     "pytest>=8.3,<9",
+    "wandb>=0.29.0",
 ]
 
 [build-system]

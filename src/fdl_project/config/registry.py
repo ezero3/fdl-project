@@ -89,6 +89,12 @@ def _vit_style(**kwargs: Any) -> nn.Module:
     return WaferViT(**kwargs)
 
 
+def _frozen_backbone_mlp(**kwargs: Any) -> nn.Module:
+    from fdl_project.models.frozen_backbone import FrozenBackboneMLP
+
+    return FrozenBackboneMLP(**kwargs)
+
+
 def _pretrained(architecture: str) -> ModelBuilder:
     def build(**kwargs: Any) -> nn.Module:
         from fdl_project.models.pretrained import PretrainedClassifier
@@ -107,6 +113,7 @@ MODEL_REGISTRY: dict[str, ModelBuilder] = {
     "densenet_style": _densenet_style,
     "convnext_style": _convnext_style,
     "vit_style": _vit_style,
+    "frozen_backbone_mlp": _frozen_backbone_mlp,
     "resnet18": _pretrained("resnet18"),
     "resnet34": _pretrained("resnet34"),
     "mobilenet_v3_small": _pretrained("mobilenet_v3_small"),

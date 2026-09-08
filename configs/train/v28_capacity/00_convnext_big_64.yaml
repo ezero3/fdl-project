@@ -1,0 +1,31 @@
+# Does ConvNeXt improve with capacity, holding architecture fixed?
+#
+# v27 showed resnet_style (2.83M, 0.8900) and convnext_style (414k, 0.8883)
+# are indistinguishable -- but those differ in architecture AND capacity, so
+# neither one is attributable. This arm widens ConvNeXt to 2.68M, matching
+# resnet_style to within 5%, so 00 vs v27-convnext_style is capacity alone
+# and 00 vs v27-resnet_style is architecture alone.
+name: v28-convnext_big_64
+
+model:
+  name: convnext_style
+  kwargs:
+    widths: [64, 128, 256]      # 2x tier 1
+    blocks_per_stage: [2, 2, 4]
+    stem_stride: 2
+    # Raised from 0.05: 6.5x the parameters on the same 121k wafers.
+    stochastic_depth: 0.1
+
+data:
+  augmentation:
+    name: rotation
+    probability: 0.5
+    kwargs: {degrees: 180.0}
+
+imbalance:
+  preset: inverse_sqrt_sampler
+
+trainer:
+  # v27-convnext_style was still improving at the 50-epoch cap (best at 46,
+  # early stopping never fired). Patience 10 decides when to stop, not the cap.
+  max_epochs: 100

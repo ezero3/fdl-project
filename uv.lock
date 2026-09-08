@@ -404,6 +404,7 @@ dev = [
     { name = "ipykernel" },
     { name = "nbconvert" },
     { name = "pytest" },
+    { name = "wandb" },
 ]
 
 [package.metadata]
@@ -424,6 +425,7 @@ dev = [
     { name = "ipykernel", specifier = ">=6.29,<7" },
     { name = "nbconvert", specifier = ">=7.16,<8" },
     { name = "pytest", specifier = ">=8.3,<9" },
+    { name = "wandb", specifier = ">=0.29.0" },
 ]
 
 [[package]]

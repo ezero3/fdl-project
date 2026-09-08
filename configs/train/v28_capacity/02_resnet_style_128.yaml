@@ -1,0 +1,25 @@
+# v27-resnet_style, unchanged, at 128x128. Pairs with 01 so resolution is
+# tested on two architectures rather than one.
+name: v28-resnet_style_128
+
+model:
+  name: resnet_style
+  kwargs:
+    widths: [32, 64, 128, 256]
+    blocks_per_stage: 2
+    dropout: 0.4
+    head_dropout: 0.3
+
+data:
+  preprocessing:
+    target_size: [128, 128]
+  augmentation:
+    name: rotation
+    probability: 0.5
+    kwargs: {degrees: 180.0}
+
+imbalance:
+  preset: inverse_sqrt_sampler
+
+trainer:
+  max_epochs: 100
