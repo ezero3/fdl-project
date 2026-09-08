@@ -1,0 +1,17 @@
+# Dense connectivity: every layer sees every earlier feature map in its block.
+# 304k parameters. Measured 163.6s/epoch on a T4 at batch 256 (GPU-bound at
+# 96% util, so the dataloader work does not help it).
+name: v27-densenet_style
+
+model:
+  name: densenet_style
+  kwargs: {}
+
+data:
+  augmentation:
+    name: rotation
+    probability: 0.5
+    kwargs: {degrees: 180.0}
+
+imbalance:
+  preset: inverse_sqrt_sampler

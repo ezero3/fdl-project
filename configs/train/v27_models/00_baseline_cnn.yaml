@@ -1,0 +1,20 @@
+# The reference point, rerun inside this series.
+#
+# It has scored 0.8800 and 0.8696 on two separate runs of the identical
+# config -- that spread IS the noise floor (0.010). A third measurement here
+# costs ~10 minutes and is what every architecture below is judged against,
+# measured on the same machine, same session, same dataframe.
+name: v27-baseline_cnn
+
+model:
+  name: baseline_cnn
+  kwargs: {dropout: 0.2}
+
+data:
+  augmentation:
+    name: rotation
+    probability: 0.5
+    kwargs: {degrees: 180.0}
+
+imbalance:
+  preset: inverse_sqrt_sampler
