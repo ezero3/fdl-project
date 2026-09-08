@@ -46,6 +46,9 @@ from fdl_project.training.loop import resolve_device
 
 logger = logging.getLogger("gradcam")
 
+#: The classes where the models actually differ; see docs/experiment-grid.md.
+DEFAULT_CLASSES = ["Scratch", "Loc", "Edge-Loc", "Center"]
+
 
 def last_convolution(model: nn.Module) -> nn.Conv2d | None:
     """The deepest Conv2d, which is where Grad-CAM is normally taken.
@@ -145,14 +148,76 @@ def pick_examples(dataset, class_names: list[str], per_class: int, seed: int) ->
     return chosen
 
 
+
+def render_grid(
+    entry: dict[str, Any],
+    dataset,
+    chosen: dict[str, list[int]],
+    output: Path,
+    dpi: int,
+    device: torch.device,
+) -> Path:
+    """All nine classes for one model, as a 3x3 sheet.
+
+    One model per figure rather than one class per figure: nine panels of the
+    same network is what shows whether it attends to the defect everywhere or
+    only on the classes it gets right.
+    """
+
+    names = [name for name in CLASS_NAMES if name in chosen]
+    figure, axes = plt.subplots(3, 3, figsize=(9.5, 10.0))
+    flat = axes.ravel()
+
+    for panel, class_name in enumerate(names):
+        position = chosen[class_name][0]
+        row_index = int(dataset.row_indices[position])
+        inputs, _, _ = dataset[position]
+        inputs = inputs.unsqueeze(0).to(device)
+
+        cam_tool = GradCAM(entry["model"], entry["layer"])
+        try:
+            with torch.enable_grad():
+                cam = cam_tool(inputs, CLASS_TO_INDEX[class_name])
+            with torch.no_grad():
+                probabilities = torch.softmax(entry["model"](inputs), dim=1)[0]
+        finally:
+            cam_tool.close()
+
+        predicted = CLASS_NAMES[int(probabilities.argmax())]
+        hit = predicted == class_name
+        axis = flat[panel]
+        axis.imshow(wafer_background(inputs.cpu()), cmap="gray")
+        axis.imshow(cam, cmap="jet", alpha=0.5)
+        axis.set_title(
+            f"{class_name}  (wafer {row_index})\n"
+            f"{'correct' if hit else 'predicted ' + predicted} {float(probabilities.max()):.2f}",
+            fontsize=9,
+            color="black" if hit else "firebrick",
+        )
+        axis.axis("off")
+
+    for panel in range(len(names), 9):
+        flat[panel].axis("off")
+
+    figure.suptitle(f"Grad-CAM: {entry['name']}", fontsize=13)
+    figure.tight_layout(rect=(0, 0, 1, 0.97))
+    path = output / f"gradcam_grid_{entry['name'].replace('/', '_')}.png"
+    figure.savefig(path, dpi=dpi, bbox_inches="tight")
+    plt.close(figure)
+    return path
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--checkpoint", type=Path, action="append", required=True,
                         help="A checkpoint. Repeatable; 2-4 reads well on a slide.")
-    parser.add_argument("--classes", nargs="+", default=["Scratch", "Loc", "Edge-Loc", "Center"],
+    parser.add_argument("--classes", nargs="+", default=DEFAULT_CLASSES,
                         help=f"Any of: {', '.join(CLASS_NAMES)}")
     parser.add_argument("--per-class", type=int, default=1)
+    parser.add_argument("--grid", action="store_true",
+                        help="One 3x3 figure per model covering all nine classes, "
+                             "instead of one figure per class across models.")
     parser.add_argument("--split", choices=("validation", "test"), default="validation")
     parser.add_argument("--output", type=Path, default=Path("output/gradcam"))
     parser.add_argument("--device", default=None)
@@ -198,7 +263,20 @@ def main() -> None:
             preprocessing_config=config.data.preprocessing, cache_maps=False,
         )
     reference = datasets[models[0]["name"]]
-    chosen = pick_examples(reference, args.classes, args.per_class, args.seed)
+    # A 3x3 sheet is nine panels, so --grid means every class unless the caller
+    # narrowed it deliberately.
+    wanted = list(CLASS_NAMES) if (args.grid and args.classes == DEFAULT_CLASSES) else args.classes
+    chosen = pick_examples(reference, wanted, args.per_class, args.seed)
+
+    if args.grid:
+        written = []
+        for entry in models:
+            path = render_grid(entry, datasets[entry["name"]], chosen,
+                               args.output, args.dpi, device)
+            written.append(path)
+            print(f"  {path}")
+        print(f"\n{len(written)} figure(s) -> {args.output}")
+        return
     row_index_to_position = {
         int(row): position for position, row in enumerate(reference.row_indices)
     }
