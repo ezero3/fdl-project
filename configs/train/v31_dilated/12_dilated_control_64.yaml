@@ -1,0 +1,31 @@
+# The control that makes 11 attributable.
+#
+# Identical to 11 in every respect -- same architecture, same depth, same
+# 298,377 parameters, same full-resolution stack that never downsamples --
+# except every dilation rate is 1. Receptive field drops 63x63 -> 19x19.
+#
+# 11 minus 12 is the value of dilation with nothing else moving. If they tie,
+# the dilated model's advantage is that it never downsamples, not the spacing
+# of its kernels, and that is a different sentence in the presentation.
+name: v31-dilated_control_64
+
+model:
+  name: dilated_style
+  kwargs:
+    channels: 64
+    dilation_rates: [1, 1, 1, 1, 1, 1, 1, 1]
+    downsample_every: 0
+    block_dropout: 0.05
+    dropout: 0.3
+
+data:
+  augmentation:
+    name: rotation
+    probability: 0.5
+    kwargs: {degrees: 180.0}
+
+imbalance:
+  preset: inverse_sqrt_sampler
+
+trainer:
+  max_epochs: 100

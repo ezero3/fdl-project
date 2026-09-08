@@ -98,17 +98,25 @@ class ConvNeXtBlock(nn.Module):
         *,
         kernel_size: int = 7,
         expansion: int = 4,
+        dilation: int = 1,
         stochastic_depth: float = 0.0,
         layer_scale: float = 1e-6,
     ) -> None:
         super().__init__()
+        if dilation < 1:
+            raise ValueError("dilation must be at least 1.")
+        # padding = dilation * (kernel // 2) keeps the output shape identical
+        # for any rate, so dilation changes the receptive field and nothing
+        # else -- not the spatial dimensions, not the parameter count.
         self.depthwise = nn.Conv2d(
             channels,
             channels,
             kernel_size=kernel_size,
-            padding=kernel_size // 2,
+            padding=dilation * (kernel_size // 2),
+            dilation=dilation,
             groups=channels,  # depthwise: this is what keeps 7x7 cheap
         )
+        self.dilation = dilation
         self.normalization = LayerNorm2d(channels)
         self.expand = nn.Conv2d(channels, channels * expansion, kernel_size=1)
         self.activation = nn.GELU()
@@ -141,6 +149,7 @@ class WaferConvNeXt(nn.Module):
         blocks_per_stage: tuple[int, ...] = (2, 2, 2),
         kernel_size: int = 7,
         expansion: int = 4,
+        dilation: int | tuple[int, ...] = 1,
         stem_stride: int = 2,
         stochastic_depth: float = 0.05,
         dropout: float = 0.3,
@@ -158,6 +167,20 @@ class WaferConvNeXt(nn.Module):
             )
         if not 0 <= dropout < 1:
             raise ValueError("dropout must be in [0, 1).")
+
+        # One rate per stage, so a config can dilate only where it is useful --
+        # typically the last stage, once the map is small and context is what
+        # is missing. An int applies the same rate everywhere.
+        rates_per_stage = (
+            (dilation,) * len(widths) if isinstance(dilation, int) else tuple(dilation)
+        )
+        if len(rates_per_stage) != len(widths):
+            raise ValueError(
+                "dilation must be an int or one rate per stage; got "
+                f"{len(rates_per_stage)} rates for {len(widths)} stages."
+            )
+        if any(rate < 1 for rate in rates_per_stage):
+            raise ValueError("dilation rates must be positive.")
 
         layers: list[nn.Module] = [
             nn.Conv2d(
@@ -190,11 +213,13 @@ class WaferConvNeXt(nn.Module):
                         width,
                         kernel_size=kernel_size,
                         expansion=expansion,
+                        dilation=rates_per_stage[stage],
                         stochastic_depth=rates[position],
                     )
                 )
                 position += 1
 
+        self.dilation_rates = rates_per_stage
         self.encoder = nn.Sequential(*layers)
         self.attention = build_attention(attention, widths[-1]) or nn.Identity()
         self.pool = nn.Sequential(nn.AdaptiveAvgPool2d(1), nn.Flatten())

@@ -1,0 +1,49 @@
+# Deeper than ResNet18 at the same width: 21.4M parameters, 512 features.
+# Pairs against v30-finetune_encoder_1e-5 (ResNet18, same recipe) so the only
+# difference is depth.
+name: v32-resnet34_finetune
+
+model:
+  name: frozen_backbone_mlp
+  kwargs:
+    architecture: resnet34
+    hidden_features: 256
+    dropout: 0.3
+    freeze_encoder: false
+
+data:
+  preprocessing:
+    target_size: [128, 128]
+  augmentation:
+    name: rotation
+    probability: 0.5
+    kwargs: {degrees: 180.0}
+
+optimizer:
+  name: adamw
+  kwargs:
+    lr: 7.0e-4              # the head
+    weight_decay: 1.0e-4
+  param_groups:
+    - name: encoder
+      pattern: "^encoder\\."
+      kwargs:
+        lr: 1.0e-5          # the winning rung from v30
+
+# One scheduler, two base rates: each group anneals from its own, and
+# min_lr_ratio is a ratio, so the 70x separation holds for the whole run.
+scheduler:
+  name: cosine_with_warmup
+  interval: epoch
+  kwargs:
+    warmup_epochs: 3
+    min_lr_ratio: 0.01
+
+imbalance:
+  preset: inverse_sqrt_sampler
+
+trainer:
+  # 60, not 40: v30-finetune_encoder_1e-5 found its best at epoch 31 of 40 with
+  # patience 10, so early stopping never fired and its 0.8938 is a floor. These
+  # backbones are larger and will not converge sooner.
+  max_epochs: 60

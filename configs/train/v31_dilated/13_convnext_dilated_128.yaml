@@ -1,0 +1,36 @@
+# Dilation on the architecture that is actually winning.
+#
+# v28-convnext_big_128 reached Scratch 0.804 by epoch 28, the best seen. This is
+# that exact model with dilation added to the later stages -- and dilation is
+# free here: padding = dilation * (kernel // 2) holds the output shape, so the
+# parameter count is identical (2,675,849) and only the receptive field moves.
+#
+# Rates (1, 2, 4): stage 1 undilated, where the map is still 64x64 after the
+# stride-2 stem and a thin Scratch needs its resolution; stages 2 and 3 dilated,
+# where the map is 32x32 and 16x16 and context is what is missing. That is the
+# "not every layer needs dilation" version, and it pairs directly against
+# v28-convnext_big_128 as its own control.
+name: v31-convnext_dilated_128
+
+model:
+  name: convnext_style
+  kwargs:
+    widths: [64, 128, 256]
+    blocks_per_stage: [2, 2, 4]
+    stem_stride: 2
+    stochastic_depth: 0.1
+    dilation: [1, 2, 4]
+
+data:
+  preprocessing:
+    target_size: [128, 128]
+  augmentation:
+    name: rotation
+    probability: 0.5
+    kwargs: {degrees: 180.0}
+
+imbalance:
+  preset: inverse_sqrt_sampler
+
+trainer:
+  max_epochs: 100

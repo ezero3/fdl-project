@@ -1,0 +1,28 @@
+# Dilation on v27-resnet_style, which scored 0.8900 -- the top of the v27 table.
+#
+# Identical to that arm except for the dilation rates, and dilation costs no
+# parameters, so 14 vs v27-resnet_style is dilation alone. Rates (1, 1, 2, 4):
+# the first two stages keep their resolution untouched, the last two widen
+# their context once the map is 16x16 and 8x8.
+name: v31-resnet_dilated_64
+
+model:
+  name: resnet_style
+  kwargs:
+    widths: [32, 64, 128, 256]
+    blocks_per_stage: 2
+    dilation: [1, 1, 2, 4]
+    dropout: 0.4
+    head_dropout: 0.3
+
+data:
+  augmentation:
+    name: rotation
+    probability: 0.5
+    kwargs: {degrees: 180.0}
+
+imbalance:
+  preset: inverse_sqrt_sampler
+
+trainer:
+  max_epochs: 100

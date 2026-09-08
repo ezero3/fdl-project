@@ -99,3 +99,27 @@ def test_rejects_wrong_channel_count() -> None:
     model.eval()
     with pytest.raises(ValueError, match="shape"):
         model(torch.rand(2, 1, 128, 128))
+
+
+@pytest.mark.parametrize("architecture", ["resnet34", "resnet50"])
+def test_deeper_resnets_are_supported(architecture: str) -> None:
+    model = _model(architecture=architecture)
+    model.eval()
+    with torch.no_grad():
+        assert model(torch.rand(2, 3, 128, 128)).shape == (2, NUM_CLASSES)
+    assert model.required_input_size is None
+
+
+@pytest.mark.parametrize("architecture", ["vit_b_32", "vit_b_16"])
+def test_vision_transformers_run_at_their_fixed_size(architecture: str) -> None:
+    """Torchvision ViT checkpoints carry positional embeddings fitted to
+    224x224. A config pairing one with target_size 128 must fail loudly rather
+    than silently producing nonsense."""
+
+    model = _model(architecture=architecture)
+    model.eval()
+    assert model.required_input_size == 224
+    with torch.no_grad():
+        assert model(torch.rand(2, 3, 224, 224)).shape == (2, NUM_CLASSES)
+    with pytest.raises(Exception):
+        model(torch.rand(2, 3, 128, 128))

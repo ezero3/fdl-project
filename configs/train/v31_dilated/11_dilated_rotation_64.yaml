@@ -1,0 +1,34 @@
+# The best result in the project, rerun on the settled pipeline.
+#
+# dilated-style-64-dihedral8 scored 0.8995 [0.8856, 0.9104] with Scratch 0.793 --
+# above v27-resnet_style's 0.8900 -- but it ran with dihedral8, and its best
+# epoch was 45 of 50, so it was still improving when the cap stopped it.
+#
+# This changes the augmentation to rotation (what every v27-v30 arm uses, and
+# what beat dihedral8 on baseline_cnn: 0.8800 vs 0.8587) and doubles the cap so
+# early stopping decides.
+name: v31-dilated_rotation_64
+
+model:
+  name: dilated_style
+  kwargs:
+    channels: 64
+    # Cycling rather than climbing: consecutive layers at one rate sample
+    # disjoint lattices and leave checkerboard holes. Receptive field 63x63 on
+    # a 64x64 map, having downsampled not at all.
+    dilation_rates: [1, 2, 4, 8, 1, 2, 4, 8]
+    downsample_every: 0
+    block_dropout: 0.05
+    dropout: 0.3
+
+data:
+  augmentation:
+    name: rotation
+    probability: 0.5
+    kwargs: {degrees: 180.0}
+
+imbalance:
+  preset: inverse_sqrt_sampler
+
+trainer:
+  max_epochs: 100

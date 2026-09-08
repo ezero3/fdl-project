@@ -29,10 +29,30 @@ from fdl_project.data.preprocessing import WAFER_STATE_COUNT
 BACKBONE_WIDTH = {          # features the backbone emits before its own classifier
     "resnet18": 512,
     "resnet34": 512,
+    "resnet50": 2048,       # bottleneck blocks, so 4x the feature width
     "mobilenet_v3_small": 576,
     "mobilenet_v3_large": 960,
     "efficientnet_b0": 1280,
+    "vit_b_16": 768,
+    "vit_b_32": 768,
 }
+
+#: Torchvision weight enums, by architecture.
+WEIGHT_ENUM = {
+    "resnet18": "ResNet18_Weights",
+    "resnet34": "ResNet34_Weights",
+    "resnet50": "ResNet50_Weights",
+    "mobilenet_v3_small": "MobileNet_V3_Small_Weights",
+    "mobilenet_v3_large": "MobileNet_V3_Large_Weights",
+    "efficientnet_b0": "EfficientNet_B0_Weights",
+    "vit_b_16": "ViT_B_16_Weights",
+    "vit_b_32": "ViT_B_32_Weights",
+}
+
+#: These keep their classifier in `heads`, not `fc` or `classifier`, and their
+#: positional embeddings are fitted to one input size -- 224x224 for every
+#: torchvision checkpoint. A config that feeds them anything else must say so.
+TOKEN_ARCHITECTURES = frozenset({"vit_b_16", "vit_b_32"})
 
 
 class FrozenBackboneMLP(nn.Module):
@@ -65,18 +85,15 @@ class FrozenBackboneMLP(nn.Module):
 
         weights = None
         if pretrained:
-            enum_name = {
-                "resnet18": "ResNet18_Weights",
-                "resnet34": "ResNet34_Weights",
-                "mobilenet_v3_small": "MobileNet_V3_Small_Weights",
-                "mobilenet_v3_large": "MobileNet_V3_Large_Weights",
-                "efficientnet_b0": "EfficientNet_B0_Weights",
-            }[architecture]
-            weights = getattr(tv, enum_name).DEFAULT
+            weights = getattr(tv, WEIGHT_ENUM[architecture]).DEFAULT
         backbone = getattr(tv, architecture)(weights=weights)
 
         width = BACKBONE_WIDTH[architecture]
-        if architecture.startswith("resnet"):
+        if architecture in TOKEN_ARCHITECTURES:
+            # A ViT emits the class token through `heads`; replacing it leaves
+            # the pooled 768-wide embedding.
+            backbone.heads = nn.Identity()
+        elif architecture.startswith("resnet"):
             backbone.fc = nn.Identity()
         else:
             # mobilenet/efficientnet end in a Sequential classifier; dropping it
@@ -108,6 +125,17 @@ class FrozenBackboneMLP(nn.Module):
         if self.frozen:
             self.encoder.eval()
         return self
+
+    @property
+    def required_input_size(self) -> int | None:
+        """The one input size this backbone accepts, if it is fixed.
+
+        Torchvision ViT checkpoints carry positional embeddings fitted to
+        224x224 and raise on anything else, so a config pairing one with
+        target_size 128 fails at the first batch rather than at import.
+        """
+
+        return 224 if self.architecture in TOKEN_ARCHITECTURES else None
 
     def forward(self, inputs: Tensor) -> Tensor:
         if inputs.ndim != 4 or inputs.shape[1] != WAFER_STATE_COUNT:
