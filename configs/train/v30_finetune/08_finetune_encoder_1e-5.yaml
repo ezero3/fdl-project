@@ -1,0 +1,53 @@
+# The encoder trains 70x slower than the head: "built upon", not "used as-is".
+# Everything except optimizer.param_groups matches v29-resnet18_frozen_onehot.
+name: v30-finetune_encoder_1e-5
+
+model:
+  name: frozen_backbone_mlp
+  kwargs:
+    architecture: resnet18
+    hidden_features: 256
+    dropout: 0.3
+    freeze_encoder: false     # the whole point of this series
+
+data:
+  preprocessing:
+    target_size: [128, 128]
+  augmentation:
+    name: rotation
+    probability: 0.5
+    kwargs: {degrees: 180.0}
+
+imbalance:
+  preset: inverse_sqrt_sampler
+
+optimizer:
+  name: adamw
+  kwargs:
+    lr: 7.0e-4              # the head, unchanged from v29
+    weight_decay: 1.0e-4
+  param_groups:
+    # A pattern matching no parameter raises rather than silently folding into
+    # the default group, so this is checked, not assumed.
+    - name: encoder
+      pattern: "^encoder\\."
+      kwargs:
+        lr: 1.0e-5
+
+# One scheduler, two base learning rates. A PyTorch scheduler scales every
+# param group from its OWN base lr, and min_lr_ratio is a ratio rather than an
+# absolute floor -- so the separation between encoder and head is preserved for
+# the whole run. Two schedulers are neither possible nor needed.
+scheduler:
+  name: cosine_with_warmup
+  interval: epoch
+  kwargs:
+    # Warmup matters most here: a large gradient from the randomly initialised
+    # head can wreck pretrained features in the first few hundred steps, which
+    # is the classic way a fine-tuning run fails for reasons unrelated to
+    # transfer.
+    warmup_epochs: 3
+    min_lr_ratio: 0.01
+
+trainer:
+  max_epochs: 40
