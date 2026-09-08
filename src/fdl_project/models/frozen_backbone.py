@@ -35,6 +35,10 @@ BACKBONE_WIDTH = {          # features the backbone emits before its own classif
     "efficientnet_b0": 1280,
     "vit_b_16": 768,
     "vit_b_32": 768,
+    "convnext_tiny": 768,
+    "convnext_small": 768,
+    "swin_t": 768,
+    "swin_v2_t": 768,
 }
 
 #: Torchvision weight enums, by architecture.
@@ -47,6 +51,10 @@ WEIGHT_ENUM = {
     "efficientnet_b0": "EfficientNet_B0_Weights",
     "vit_b_16": "ViT_B_16_Weights",
     "vit_b_32": "ViT_B_32_Weights",
+    "convnext_tiny": "ConvNeXt_Tiny_Weights",
+    "convnext_small": "ConvNeXt_Small_Weights",
+    "swin_t": "Swin_T_Weights",
+    "swin_v2_t": "Swin_V2_T_Weights",
 }
 
 #: These keep their classifier in `heads`, not `fc` or `classifier`, and their
@@ -93,8 +101,17 @@ class FrozenBackboneMLP(nn.Module):
             # A ViT emits the class token through `heads`; replacing it leaves
             # the pooled 768-wide embedding.
             backbone.heads = nn.Identity()
+        elif architecture.startswith("swin"):
+            backbone.head = nn.Identity()
         elif architecture.startswith("resnet"):
             backbone.fc = nn.Identity()
+        elif architecture.startswith("convnext"):
+            # ConvNeXt's classifier is LayerNorm2d -> Flatten -> Linear, so the
+            # Flatten that produces a 2-D feature vector lives INSIDE it.
+            # Replacing the whole Sequential would leave (batch, 768, 1, 1) and
+            # the head's Linear would silently consume the wrong axis. Only the
+            # final Linear goes.
+            backbone.classifier[2] = nn.Identity()
         else:
             # mobilenet/efficientnet end in a Sequential classifier; dropping it
             # leaves features + avgpool + flatten, which emits `width` values.

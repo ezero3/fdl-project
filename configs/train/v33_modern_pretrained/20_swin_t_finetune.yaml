@@ -1,0 +1,50 @@
+# A hierarchical transformer: windowed attention that keeps a feature pyramid
+# instead of one fixed token grid.
+#
+# It is the transformer that can actually be compared on equal terms here.
+# vit_b_32 is locked to 224x224 by its positional embeddings, while Swin runs
+# at 128 like every other arm in v32 and v33 -- so attention-vs-convolution is
+# tested without resolution moving at the same time.
+name: v33-swin_t_finetune
+
+model:
+  name: frozen_backbone_mlp
+  kwargs:
+    architecture: swin_t
+    hidden_features: 256
+    dropout: 0.3
+    freeze_encoder: false
+
+data:
+  preprocessing:
+    target_size: [128, 128]
+  augmentation:
+    name: rotation
+    probability: 0.5
+    kwargs: {degrees: 180.0}
+
+optimizer:
+  name: adamw
+  kwargs:
+    lr: 7.0e-4              # the head
+    weight_decay: 1.0e-4
+  param_groups:
+    - name: encoder
+      pattern: "^encoder\\."
+      kwargs:
+        lr: 1.0e-5          # the winning rung from v30
+
+# One scheduler, two base rates: each group anneals from its own, and
+# min_lr_ratio is a ratio, so the 70x separation holds for the whole run.
+scheduler:
+  name: cosine_with_warmup
+  interval: epoch
+  kwargs:
+    warmup_epochs: 3
+    min_lr_ratio: 0.01
+
+imbalance:
+  preset: inverse_sqrt_sampler
+
+trainer:
+  max_epochs: 60

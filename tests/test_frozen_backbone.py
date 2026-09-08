@@ -123,3 +123,22 @@ def test_vision_transformers_run_at_their_fixed_size(architecture: str) -> None:
         assert model(torch.rand(2, 3, 224, 224)).shape == (2, NUM_CLASSES)
     with pytest.raises(Exception):
         model(torch.rand(2, 3, 128, 128))
+
+
+@pytest.mark.parametrize(
+    "architecture",
+    ["efficientnet_b0", "convnext_tiny", "convnext_small", "swin_t", "swin_v2_t"],
+)
+def test_modern_backbones_emit_a_flat_feature_vector(architecture: str) -> None:
+    """Every family hides its classifier somewhere different, and getting it
+    wrong is silent rather than loud. ConvNeXt is the trap: its Flatten lives
+    *inside* `classifier`, so replacing the whole Sequential leaves a
+    (batch, 768, 1, 1) tensor that a Linear will still happily consume."""
+
+    model = _model(architecture=architecture)
+    model.eval()
+    with torch.no_grad():
+        features = model.encoder(torch.rand(2, 3, 128, 128))
+        assert features.ndim == 2, f"{architecture} encoder returned {features.shape}"
+        assert model(torch.rand(2, 3, 128, 128)).shape == (2, NUM_CLASSES)
+    assert model.required_input_size is None
