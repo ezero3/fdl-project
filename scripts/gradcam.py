@@ -65,11 +65,51 @@ def last_convolution(model: nn.Module) -> nn.Conv2d | None:
     return found
 
 
+
+def token_target(model: nn.Module) -> tuple[nn.Module, Any] | None:
+    """Target layer and reshape for a torchvision ViT, or None if not one.
+
+    Grad-CAM needs a layer whose axes are spatial. A ViT has none, but its
+    patch tokens ARE a grid -- the last block's first LayerNorm carries one
+    vector per patch, so dropping the class token and folding the sequence back
+    into a square recovers the layout. The last block's norm rather than its
+    output is the standard choice: after the residual add, gradients are
+    dominated by the skip path and the map washes out.
+
+    Swin returns None deliberately: it emits (batch, H, W, channels) through a
+    hierarchy of merged windows, so it needs its own handling rather than this.
+    """
+
+    encoder = getattr(model, "encoder", model)
+    layers = getattr(getattr(encoder, "encoder", None), "layers", None)
+    if layers is None or not len(layers):
+        return None
+    target = getattr(layers[-1], "ln_1", None)
+    if target is None:
+        return None
+
+    def reshape(tensor: Tensor) -> Tensor:
+        # (batch, 1 + patches, channels) -> (batch, channels, side, side)
+        patches = tensor[:, 1:, :]
+        side = int(round(patches.shape[1] ** 0.5))
+        if side * side != patches.shape[1]:
+            raise RuntimeError(
+                f"{patches.shape[1]} patch tokens do not form a square grid."
+            )
+        return patches.reshape(patches.shape[0], side, side, -1).permute(0, 3, 1, 2)
+
+    return target, reshape
+
+
 class GradCAM:
     """Activations and gradients from one layer, via two hooks."""
 
-    def __init__(self, model: nn.Module, layer: nn.Module) -> None:
+    def __init__(self, model: nn.Module, layer: nn.Module, reshape=None) -> None:
         self.model = model
+        # Token models emit (batch, tokens, channels); `reshape` turns that back
+        # into (batch, channels, height, width) so the same channel-weighting
+        # applies. Convolutional models pass None and nothing changes.
+        self.reshape = reshape
         self.activations: Tensor | None = None
         self.gradients: Tensor | None = None
         self._handles = [
@@ -94,9 +134,21 @@ class GradCAM:
 
         if self.activations is None or self.gradients is None:
             raise RuntimeError("The hooked layer did not fire; wrong target layer.")
+        activations, gradients = self.activations, self.gradients
+        if self.reshape is not None:
+            activations, gradients = self.reshape(activations), self.reshape(gradients)
         # One weight per channel: how much raising that channel raises the logit.
-        weights = self.gradients.mean(dim=(2, 3), keepdim=True)
-        cam = torch.relu((weights * self.activations).sum(dim=1, keepdim=True))
+        weights = gradients.mean(dim=(2, 3), keepdim=True)
+        raw = (weights * activations).sum(dim=1, keepdim=True)
+        cam = torch.relu(raw)
+        # On a transformer the weighted sum comes out almost entirely negative --
+        # typically ~2% of positions positive -- so the ReLU that makes Grad-CAM
+        # readable on a CNN erases the map instead. Falling back to the
+        # mean-centred magnitude keeps the same "where did the evidence come
+        # from" reading without inventing signal: it is the same tensor, shifted
+        # rather than clipped. This only triggers when ReLU leaves nothing.
+        if float(cam.max()) <= 1e-12:
+            cam = torch.relu(raw - raw.mean())
         cam = torch.nn.functional.interpolate(
             cam, size=inputs.shape[-2:], mode="bilinear", align_corners=False
         )
@@ -174,7 +226,7 @@ def render_grid(
         inputs, _, _ = dataset[position]
         inputs = inputs.unsqueeze(0).to(device)
 
-        cam_tool = GradCAM(entry["model"], entry["layer"])
+        cam_tool = GradCAM(entry["model"], entry["layer"], entry.get("reshape"))
         try:
             with torch.enable_grad():
                 cam = cam_tool(inputs, CLASS_TO_INDEX[class_name])
@@ -237,14 +289,19 @@ def main() -> None:
     models = []
     for path in args.checkpoint:
         model, config, name = load_one(Path(path), device)
-        layer = last_convolution(model)
+        layer, reshape = last_convolution(model), None
         if layer is None:
-            logger.warning(
-                "%s has no Conv2d (a token model); Grad-CAM needs attention "
-                "rollout instead. Skipping.", name
-            )
-            continue
-        models.append({"name": name, "model": model, "config": config, "layer": layer})
+            resolved = token_target(model)
+            if resolved is None:
+                logger.warning(
+                    "%s has neither a Conv2d nor patch tokens this script can "
+                    "fold back into a grid. Skipping.", name
+                )
+                continue
+            layer, reshape = resolved
+            logger.info("%s: token model, using the last block's LayerNorm.", name)
+        models.append({"name": name, "model": model, "config": config,
+                       "layer": layer, "reshape": reshape})
     if not models:
         raise SystemExit("No convolutional checkpoints to explain.")
 
@@ -301,7 +358,7 @@ def main() -> None:
                 inputs, _, _ = dataset[local]
                 inputs = inputs.unsqueeze(0).to(device).requires_grad_(False)
 
-                cam_tool = GradCAM(entry["model"], entry["layer"])
+                cam_tool = GradCAM(entry["model"], entry["layer"], entry.get("reshape"))
                 try:
                     with torch.enable_grad():
                         cam = cam_tool(inputs, CLASS_TO_INDEX[class_name])
