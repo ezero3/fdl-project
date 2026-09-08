@@ -391,6 +391,7 @@ class TrainerConfig:
             "batch_size": self.batch_size,
             "max_gradient_norm": float(self.max_gradient_norm),
             "amp": self.amp,
+            "channels_last": self.channels_last,
             "device": self.device,
             "early_stopping": self.early_stopping.to_dict(),
         }

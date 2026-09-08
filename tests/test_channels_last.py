@@ -72,3 +72,11 @@ def test_gradients_match() -> None:
         )
 
     torch.testing.assert_close(grads[0], grads[1], rtol=1e-4, atol=1e-5)
+
+
+def test_it_is_recorded_in_the_run_config() -> None:
+    """A speed flag that is not logged is a flag nobody can attribute a result
+    to later. W&B and the checkpoint metadata both read to_dict()."""
+
+    assert TrainerConfig(channels_last=True).to_dict()["channels_last"] is True
+    assert TrainerConfig().to_dict()["channels_last"] is False

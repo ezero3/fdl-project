@@ -86,8 +86,14 @@ def evaluate_checkpoint(
     tta: bool = False,
     tune_thresholds: bool = False,
     class_weights_path: str | Path | None = None,
+    dataframe: pd.DataFrame | None = None,
 ) -> InferenceResult:
-    """Rebuild the model from a checkpoint and score it on one split."""
+    """Rebuild the model from a checkpoint and score it on one split.
+
+    Pass ``dataframe`` to reuse an already-loaded source table. Reading the
+    pickle costs about two minutes, so evaluating a dozen checkpoints across two
+    splits would otherwise spend most of its time on the same file.
+    """
 
     if split_name not in {"validation", "test"}:
         raise ValueError("split_name must be 'validation' or 'test'.")
@@ -108,7 +114,8 @@ def evaluate_checkpoint(
     model.load_state_dict(payload["model_state"])
     model.to(device_object)
 
-    dataframe = load_wm811k_dataframe(config.data.dataset_path)
+    if dataframe is None:
+        dataframe = load_wm811k_dataframe(config.data.dataset_path)
     dataset = create_split_dataset(
         dataframe,
         config.data.split_directory,
