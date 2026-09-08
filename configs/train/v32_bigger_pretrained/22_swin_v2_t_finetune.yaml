@@ -1,0 +1,51 @@
+# Swin V2-T at 128x128: the newer Swin, with scaled cosine attention and
+# log-spaced continuous position bias -- the changes that made Swin trainable at
+# larger sizes and more stable at high learning rates.
+#
+# Unlike MaxViT and ViT it is NOT pinned to 224: windowed attention adapts to any
+# size divisible by 32. So this is the transformer that can be compared on the
+# same 128px footing as every CNN arm, with nothing but the architecture moving.
+#
+# Pairs with a teammate's v33-swin_t_finetune to separate V2's changes from Swin
+# itself.
+name: v32-swin_v2_t_finetune
+
+model:
+  name: frozen_backbone_mlp
+  kwargs:
+    architecture: swin_v2_t
+    hidden_features: 256
+    dropout: 0.3
+    freeze_encoder: false
+
+data:
+  preprocessing:
+    target_size: [128, 128]
+  augmentation:
+    name: rotation
+    probability: 0.5
+    kwargs: {degrees: 180.0}
+
+optimizer:
+  name: adamw
+  kwargs:
+    lr: 7.0e-4              # the head
+    weight_decay: 1.0e-4
+  param_groups:
+    - name: encoder
+      pattern: "^encoder\\."
+      kwargs:
+        lr: 1.0e-5          # the winning rung from v30
+
+scheduler:
+  name: cosine_with_warmup
+  interval: epoch
+  kwargs:
+    warmup_epochs: 3
+    min_lr_ratio: 0.01
+
+imbalance:
+  preset: inverse_sqrt_sampler
+
+trainer:
+  max_epochs: 60

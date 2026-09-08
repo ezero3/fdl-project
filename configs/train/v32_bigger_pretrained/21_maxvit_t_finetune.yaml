@@ -1,0 +1,56 @@
+# MaxViT-T: the most modern architecture in this project.
+#
+# A hybrid -- MBConv blocks for local inductive bias, then block attention
+# (within a window) and grid attention (across a sparse global lattice) in every
+# stage. It is the design that answers the objection our own results keep
+# raising: a plain ViT has no locality prior and has to learn it from data we do
+# not have, while MaxViT is given it and keeps global attention on top.
+#
+# 30.9M parameters. Directly comparable to v32-vit_b_32_finetune (0.9029), which
+# is also at 224x224 -- same resolution, same recipe, different attention design.
+#
+# 224 is forced: grid attention partitions the map into a 7x7 lattice, so 128px
+# fails on a reshape inside the block. Same caveats as the ViT arm -- the input
+# is an upsample of a 212x187 map, and 224^2 is past the 2 GiB geometry-cache
+# budget so the loader redoes letterboxing per access.
+name: v32-maxvit_t_finetune
+
+model:
+  name: frozen_backbone_mlp
+  kwargs:
+    architecture: maxvit_t
+    hidden_features: 256
+    dropout: 0.3
+    freeze_encoder: false
+
+data:
+  preprocessing:
+    target_size: [224, 224]
+  augmentation:
+    name: rotation
+    probability: 0.5
+    kwargs: {degrees: 180.0}
+
+optimizer:
+  name: adamw
+  kwargs:
+    lr: 7.0e-4              # the head
+    weight_decay: 1.0e-4
+  param_groups:
+    - name: encoder
+      pattern: "^encoder\\."
+      kwargs:
+        lr: 1.0e-5          # the winning rung from v30
+
+scheduler:
+  name: cosine_with_warmup
+  interval: epoch
+  kwargs:
+    warmup_epochs: 3
+    min_lr_ratio: 0.01
+
+imbalance:
+  preset: inverse_sqrt_sampler
+
+trainer:
+  max_epochs: 60

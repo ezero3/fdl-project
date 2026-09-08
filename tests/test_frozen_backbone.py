@@ -142,3 +142,30 @@ def test_modern_backbones_emit_a_flat_feature_vector(architecture: str) -> None:
         assert features.ndim == 2, f"{architecture} encoder returned {features.shape}"
         assert model(torch.rand(2, 3, 128, 128)).shape == (2, NUM_CLASSES)
     assert model.required_input_size is None
+
+
+def test_maxvit_is_pinned_to_224() -> None:
+    """MaxViT partitions the map into a 7x7 grid for its grid attention, so a
+    128px input fails on a reshape deep inside the block rather than on a clear
+    assertion. required_input_size is what turns that into an early, readable
+    failure."""
+
+    model = _model(architecture="maxvit_t")
+    model.eval()
+    assert model.required_input_size == 224
+    with torch.no_grad():
+        features = model.encoder(torch.rand(2, 3, 224, 224))
+        assert features.shape == (2, 512)
+        assert model(torch.rand(2, 3, 224, 224)).shape == (2, NUM_CLASSES)
+
+
+def test_swin_is_not_pinned() -> None:
+    """Windowed attention adapts to any size divisible by 32, which is why Swin
+    can be compared at 128 alongside the CNNs while ViT and MaxViT cannot."""
+
+    for architecture in ("swin_t", "swin_v2_t", "swin_s"):
+        model = _model(architecture=architecture)
+        model.eval()
+        assert model.required_input_size is None
+        with torch.no_grad():
+            assert model(torch.rand(2, 3, 128, 128)).shape == (2, NUM_CLASSES)

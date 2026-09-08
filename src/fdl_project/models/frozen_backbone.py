@@ -39,6 +39,8 @@ BACKBONE_WIDTH = {          # features the backbone emits before its own classif
     "convnext_small": 768,
     "swin_t": 768,
     "swin_v2_t": 768,
+    "swin_s": 768,
+    "maxvit_t": 512,        # its head projects down to 512 before classifying
 }
 
 #: Torchvision weight enums, by architecture.
@@ -55,12 +57,20 @@ WEIGHT_ENUM = {
     "convnext_small": "ConvNeXt_Small_Weights",
     "swin_t": "Swin_T_Weights",
     "swin_v2_t": "Swin_V2_T_Weights",
+    "swin_s": "Swin_S_Weights",
+    "maxvit_t": "MaxVit_T_Weights",
 }
 
 #: These keep their classifier in `heads`, not `fc` or `classifier`, and their
 #: positional embeddings are fitted to one input size -- 224x224 for every
 #: torchvision checkpoint. A config that feeds them anything else must say so.
 TOKEN_ARCHITECTURES = frozenset({"vit_b_16", "vit_b_32"})
+
+#: Fixed 224x224 for a different reason: MaxViT's grid attention partitions the
+#: map into a 7x7 lattice, so a 128px input fails on a reshape rather than an
+#: assertion. Swin is not here -- its windowed attention adapts to any size
+#: divisible by 32, which is why it can be compared at 128 like everything else.
+FIXED_224_ARCHITECTURES = frozenset({"maxvit_t"}) | TOKEN_ARCHITECTURES
 
 
 class FrozenBackboneMLP(nn.Module):
@@ -103,6 +113,11 @@ class FrozenBackboneMLP(nn.Module):
             backbone.heads = nn.Identity()
         elif architecture.startswith("swin"):
             backbone.head = nn.Identity()
+        elif architecture == "maxvit_t":
+            # MaxViT's classifier is pool -> flatten -> LayerNorm -> Linear ->
+            # Tanh -> Linear. Everything but the last Linear is the pretrained
+            # projection into its 512-wide embedding, so only that goes.
+            backbone.classifier[-1] = nn.Identity()
         elif architecture.startswith("resnet"):
             backbone.fc = nn.Identity()
         elif architecture.startswith("convnext"):
@@ -152,7 +167,7 @@ class FrozenBackboneMLP(nn.Module):
         target_size 128 fails at the first batch rather than at import.
         """
 
-        return 224 if self.architecture in TOKEN_ARCHITECTURES else None
+        return 224 if self.architecture in FIXED_224_ARCHITECTURES else None
 
     def forward(self, inputs: Tensor) -> Tensor:
         if inputs.ndim != 4 or inputs.shape[1] != WAFER_STATE_COUNT:
