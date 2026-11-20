@@ -1,6 +1,6 @@
 # WM-811K Image Preprocessing Report
 
-This report documents the experiment in [`notebooks/04_preprocessing_comparison.ipynb`](../../notebooks/04_preprocessing_comparison.ipynb) and the reusable implementation in `src/fdl_project/`. The generated files under [`output/preprocessing/`](../../output/preprocessing/) record the measured results.
+This report documents the experiment in [`notebooks/preparation/preprocessing_comparison.ipynb`](../../notebooks/preparation/preprocessing_comparison.ipynb) and the reusable implementation in `src/fdl_project/`. The generated files under [`output/preprocessing/`](../../output/preprocessing/) record the measured results.
 
 ## Objective
 

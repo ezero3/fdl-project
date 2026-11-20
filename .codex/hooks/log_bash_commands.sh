@@ -1,1 +1,0 @@
-../../.claude/hooks/log_bash_commands.sh
