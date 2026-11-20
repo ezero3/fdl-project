@@ -1,25 +1,39 @@
-# Explore Image Preprocessing Pipelines
+# Task 04: Explore Image Preprocessing Pipelines
 
 Compare categorical-safe transformations for variable-size WM-811K maps and implement the selected configuration as a reusable PyTorch input pipeline.
 
 ## Goal
 
-Give every model a deterministic, fixed-shape input while preserving wafer geometry, die-state semantics, the shared class encoding, and the frozen-test policy.
+Provide every model with a deterministic, fixed-shape input while preserving wafer geometry, die-state semantics, the shared class encoding, and the frozen-test policy.
 
-## Tasks
+## Data Semantics & Preprocessing Rules
 
-- [x] Document the three categorical wafer-map states and validate all raw inputs
-- [x] Compare pure padding, direct resizing, and aspect-ratio-preserving letterbox resizing
-- [x] Compare one-hot and normalized single-channel encodings
-- [x] Use only a deterministic, class-balanced sample from the training split for selection
-- [x] Measure geometry distortion, defective-die retention, processing time, occupancy, and input memory
-- [x] Select and freeze the default `64 x 64` letterbox plus three-channel one-hot configuration
-- [x] Implement immutable preprocessing configuration and categorical-safe PyTorch transforms
-- [x] Implement a supervised Dataset using the canonical nine-class encoding and persisted splits
-- [x] Implement deterministic training and ordered validation/test DataLoaders
-- [x] Preserve original row indices for compatibility with the shared evaluation pipeline
-- [x] Reject malformed maps, invalid split artifacts, and unlabeled supervised rows
-- [x] Add automated tests for transforms, encodings, datasets, loaders, and benchmark results
-- [x] Execute the comparison on the real dataset and save reproducible artifacts
-- [x] Validate the selected pipeline on the complete validation split
-- [x] Document the decision, API, trade-offs, and frozen-test policy
+- **Discrete categorical states**: Raw maps contain discrete identifiers (`0`: outside wafer, `1`: functional die, `2`: defective die). They are categories, not continuous intensities.
+- **Categorical-safe geometry**: Resizing must use `nearest-exact` interpolation to prevent creating fictitious intermediate values.
+- **Candidate screening on training split**: Candidate dimensions, aspect policies, and encodings must be chosen exclusively using a class-balanced training sample without inspecting the test set.
+- **Selected default**:
+  - Aspect-ratio-preserving **letterbox resize** to `64 x 64` (padded with state 0).
+  - **One-hot encoding** into 3 binary channels (`outside_wafer`, `functional_die`, `defective_die`), producing a `float32` tensor of shape `(3, 64, 64)`.
+
+## Tasks & Checklist
+
+- [x] Document 3 categorical die states and validate all raw wafer map inputs.
+- [x] Compare pure padding, direct resizing, and aspect-ratio-preserving letterbox resizing.
+- [x] Compare one-hot encoding vs normalized single-channel representations.
+- [x] Benchmark geometric distortion, defective-die retention, CPU processing time, and memory footprint.
+- [x] Select and freeze `64 x 64` letterbox + 3-channel one-hot as default.
+- [x] Implement immutable preprocessing configuration and categorical transforms.
+- [x] Implement supervised Dataset (`WM811KDataset`) returning `(image, target, row_index)`.
+- [x] Implement deterministic training loaders and ordered validation/test DataLoaders.
+- [x] Reject malformed maps, non-2D arrays, invalid splits, and unlabeled supervised rows.
+- [x] Add automated unit tests for transformations, encodings, datasets, and loaders.
+- [x] Execute candidate comparison on real training data and save benchmark artifacts.
+- [x] Validate selected pipeline on the complete validation split.
+- [x] Document decision rationale, trade-offs, and limitations.
+
+## Deliverables
+
+- Preprocessing and dataset modules in [`src/fdl_project/data/`](../../src/fdl_project/data/).
+- Executed comparison notebook: [`notebooks/preparation/preprocessing_comparison.ipynb`](../../notebooks/preparation/preprocessing_comparison.ipynb).
+- Benchmark artifacts under `output/preprocessing/`.
+- Written summary report: [`docs/reports/preprocessing_report.md`](../reports/preprocessing_report.md).
