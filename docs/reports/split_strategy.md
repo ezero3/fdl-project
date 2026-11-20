@@ -1,6 +1,6 @@
 # WM-811K Dataset Split Report
 
-This report summarizes the methodology and results produced by [`notebooks/02_split_data.ipynb`](../../notebooks/02_split_data.ipynb). The notebook and the generated files under [`data/splits/`](../../data/splits/) are the source of truth for the reported split.
+This report summarizes the methodology and results produced by [`notebooks/preparation/split_data.ipynb`](../../notebooks/preparation/split_data.ipynb). The notebook and the generated files under [`data/splits/`](../../data/splits/) are the source of truth for the reported split.
 
 ## Objective
 

@@ -1,6 +1,6 @@
 # WM-811K Exploratory Data Analysis Report
 
-This report summarizes the executed analysis in [`notebooks/01_eda_wm811k_validation.ipynb`](../../notebooks/01_eda_wm811k_validation.ipynb). The notebook and its saved outputs are the source of truth for all values reported below.
+This report summarizes the executed analysis in [`notebooks/preparation/eda_wm811k_validation.ipynb`](../../notebooks/preparation/eda_wm811k_validation.ipynb). The notebook and its saved outputs are the source of truth for all values reported below.
 
 ## Dataset structure and label availability
 
