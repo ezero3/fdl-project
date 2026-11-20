@@ -146,3 +146,20 @@ uv run python scripts/gradcam.py \
     --classes Center Scratch Edge-Ring Donut \
     --output output/gradcam
 ```
+
+---
+
+## Technical Documentation & In-Depth Reports
+
+For readers and reviewers interested in delving deeper into the engineering decisions, hardware benchmarks, and statistical evaluations, detailed technical reports are available under [`docs/`](docs/):
+
+- [`docs/design-notes.md`](docs/design-notes.md): In-depth engineering rationale covering categorical vs. intensity mappings, downscaling analysis, and architectural choices.
+- [`docs/experiment-grid.md`](docs/experiment-grid.md): Comprehensive benchmark table covering all **36 recorded runs** with 95% bootstrap confidence intervals and per-class metrics.
+- [`docs/training-plan.md`](docs/training-plan.md): The phased experimental methodology (from baseline screening to architecture selection).
+- [`docs/phase0-results.md`](docs/phase0-results.md): Hardware profiling and GPU memory benchmarks on NVIDIA T4 (Google Colab).
+- [`docs/ROADMAP.md`](docs/ROADMAP.md): Project development backlog, team coordination, and priority milestones.
+- Specialized topic reports:
+  - [`docs/reports/eda_report.md`](docs/reports/eda_report.md): Exploratory data analysis and defect topological characteristics.
+  - [`docs/reports/split_strategy.md`](docs/reports/split_strategy.md): Detailed lot-stratified group split formulation.
+  - [`docs/reports/preprocessing_report.md`](docs/reports/preprocessing_report.md): Aspect ratio preservation and discrete state encoding benchmark.
+  - [`docs/reports/class_imbalance_report.md`](docs/reports/class_imbalance_report.md): Full comparison of imbalance mitigation strategies.
