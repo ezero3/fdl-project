@@ -2,6 +2,8 @@
 
 This repository contains the group project developed for the **Foundations of Deep Learning** university course at the University of Milano-Bicocca, academic year 2025/2026.
 
+>**Project Presentation Slides**: The complete slide deck used for the oral presentation defense is available at [`presentation/oral_presentation_slides.pdf`](presentation/oral_presentation_slides.pdf).
+
 ## From a silicon wafer to a wafer map
 
 During semiconductor fabrication, hundreds of integrated circuit units (**dies**) are manufactured simultaneously on a circular silicon slice called a **wafer**. After production, electrical testing classifies each die as either functional or failing.
@@ -158,6 +160,7 @@ For readers and reviewers interested in delving deeper into the engineering deci
 - [`docs/training-plan.md`](docs/training-plan.md): The phased experimental methodology (from baseline screening to architecture selection).
 - [`docs/phase0-results.md`](docs/phase0-results.md): Hardware profiling and GPU memory benchmarks on NVIDIA T4 (Google Colab).
 - [`docs/ROADMAP.md`](docs/ROADMAP.md): Project development backlog, team coordination, and priority milestones.
+- [`presentation/oral_presentation_slides.pdf`](presentation/oral_presentation_slides.pdf): Complete slide deck for the oral presentation.
 - Specialized topic reports:
   - [`docs/reports/eda_report.md`](docs/reports/eda_report.md): Exploratory data analysis and defect topological characteristics.
   - [`docs/reports/split_strategy.md`](docs/reports/split_strategy.md): Detailed lot-stratified group split formulation.
